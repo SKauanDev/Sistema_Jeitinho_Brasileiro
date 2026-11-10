@@ -1,0 +1,3 @@
+import type { Order } from "./admin";
+export type FinancialEntry = { id: string; type: "IN" | "OUT"; category: string; description: string; amount: string; entryDate: string; notes?: string; createdBy?: string; createdAt: string };
+export type FinanceData = { period: { start: string; end: string }; kpis: { revenue: number; paidOrders: number; averageTicket: number; discounts: number; deliveryFees: number; cancellations: number }; cashFlow: { sales: number; manualIncome: number; income: number; expenses: number; balance: number }; chart: Array<{ date: string; revenue: number; orders: number; expenses: number }>; payments: Array<{ method: string; name: string; value: number; percentage: number }>; entries: FinancialEntry[]; recentOrders: Order[] };

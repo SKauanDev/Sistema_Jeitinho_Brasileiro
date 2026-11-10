@@ -1,0 +1,12 @@
+export const ORDER_STATUSES = ["NEW", "CONFIRMED", "PREPARING", "READY", "OUT_FOR_DELIVERY", "COMPLETED", "CANCELED"] as const;
+export type OrderStatus = typeof ORDER_STATUSES[number];
+
+export const ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  NEW: ["CONFIRMED", "CANCELED"],
+  CONFIRMED: ["PREPARING", "CANCELED"],
+  PREPARING: ["READY", "CANCELED"],
+  READY: ["OUT_FOR_DELIVERY", "COMPLETED", "CANCELED"],
+  OUT_FOR_DELIVERY: ["COMPLETED", "CANCELED"],
+  COMPLETED: [],
+  CANCELED: [],
+};

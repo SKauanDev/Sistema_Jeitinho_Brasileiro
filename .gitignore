@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.idea/
+.vscode/
+coverage/
+apps/api/prisma/dev.db*
+apps/api/uploads/
+uploads/
+/tmp/pizza-qa/
+/anotações.html
+/anotações.txt

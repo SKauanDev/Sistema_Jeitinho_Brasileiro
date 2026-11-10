@@ -1,0 +1,18 @@
+{
+  "name": "urfood",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n API,WEB -c yellow,cyan \"npm run dev -w @urfood/api\" \"npm run dev -w @urfood/web\"",
+    "build": "npm run build --workspaces --if-present",
+    "start": "npm run start -w @urfood/api",
+    "db:check": "npm run db:check -w @urfood/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "prettier": "^3.9.6"
+  }
+}

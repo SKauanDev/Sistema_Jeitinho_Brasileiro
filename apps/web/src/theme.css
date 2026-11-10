@@ -1,0 +1,134 @@
+/* Shared Borda Dourada identity for the storefront, management and customer pages. */
+:root {
+  --brand-black: #131313;
+  --brand-red: #6F0801;
+  --brand-gold: #CA9239;
+  --brand-cream: #f7f2e9;
+  --brand-tint: #CA92391a;
+  --orange: var(--brand-red);
+  --dark: var(--brand-black);
+  color: var(--brand-black);
+  background: var(--brand-black);
+  accent-color: var(--brand-red);
+}
+body { background: var(--brand-black); }
+button:focus-visible, a:focus-visible {
+  outline: 2px solid var(--brand-gold);
+  outline-offset: 3px;
+}
+.admin-shell button:focus-visible, .admin-shell a:focus-visible { outline-color: var(--brand-gold); }
+
+.login-page { background: var(--brand-black); }
+.login-brand { background: linear-gradient(135deg, #131313e8, #6F080180), url('/images/pizza-hero.png') center / cover; }
+.login-panel { background: var(--brand-cream); border-left: 1px solid #CA923955; }
+.login-brand > span, .login-heading small { color: var(--brand-red); }
+.login-panel label > div:focus-within { border-color: var(--brand-gold); box-shadow: 0 0 0 3px var(--brand-tint); }
+.login-panel input { background: transparent; color: var(--brand-black); }
+.login-submit { background: var(--brand-red); box-shadow: 0 8px 20px #6F080135; }
+
+.admin-shell { background: var(--brand-black); color: var(--brand-black); }
+.admin-main { background: var(--brand-cream); }
+.admin-sidebar, .admin-topbar { background: var(--brand-black); border-color: #CA923940; }
+.admin-sidebar { border-right: 1px solid #CA923940; }
+.admin-sidebar > header, .admin-sidebar > footer { border-color: #CA923940; }
+.admin-sidebar nav > small { color: var(--brand-gold); }
+.admin-sidebar nav a, .admin-sidebar nav button, .admin-sidebar footer small, .admin-sidebar footer button { color: #cfc3b2; }
+.admin-sidebar nav a:hover, .admin-sidebar nav button:hover { background: var(--brand-tint); color: #fff; }
+.admin-sidebar nav a.active, .admin-sidebar nav button.active { background: var(--brand-red); color: #fff; box-shadow: inset 3px 0 var(--brand-gold); }
+.admin-sidebar nav a.active svg { color: var(--brand-gold); }
+.admin-sidebar nav a b, .admin-sidebar nav button b { background: var(--brand-gold); color: var(--brand-black); }
+.admin-breadcrumb, .admin-actions, .admin-actions > button, .sidebar-trigger { color: #f7f2e9; }
+.admin-breadcrumb span, .admin-breadcrumb b { color: #cfc3b2; }
+.admin-user-avatar, .top-avatar { background: var(--brand-gold); color: var(--brand-black); }
+.admin-topbar .menu-preview-link { background: var(--brand-red); color: #fff; border-color: var(--brand-gold); }
+.primary-admin, .admin-shell button.save { background: var(--brand-red); }
+.admin-shell .module-title > div > span { color: var(--brand-red); }
+.admin-shell .panel, .admin-shell .metric-grid article { border-color: #CA923930; }
+.metric-orange { background: var(--brand-tint); color: var(--brand-red); }
+.finance-balance, .report-executive-head, .reports-analytics .report-executive-head { background: linear-gradient(120deg, var(--brand-black), var(--brand-red)); }
+.finance-balance > svg { color: var(--brand-gold); }
+.finance-balance small { color: #d0c3b4; }
+.admin-shell .period-controls button.active, .admin-shell .catalog-category-panel .selected { background: var(--brand-tint); color: var(--brand-red); border-color: var(--brand-gold); }
+.admin-shell .catalog-product-table .selected { background: #CA92390d; }
+
+.customer-profile-page, .orders-page, .status-page, .pix-payment-page, .card-payment-page { background: var(--brand-black); }
+.customer-login-card, .customer-profile-hero, .status-page > section, .status-panel, .pix-payment-card, .card-payment-shell { border-color: #CA923960; }
+.orders-page > section { color: #f7f2e9; }
+.orders-page > section > header > a, .orders-page header div > span { color: var(--brand-gold); }
+.orders-page header p { color: #cfc3b2; }
+.orders-page .empty { color: #cfc3b2; }
+.orders-list a, .orders-list article, .customer-order-card { color: var(--brand-black); }
+.customer-profile > header > a, .customer-profile > header > button { color: var(--brand-gold); }
+.customer-profile-hero { background: linear-gradient(120deg, var(--brand-black), var(--brand-red)); }
+.customer-profile-hero > i { background: var(--brand-red); border-color: var(--brand-gold); }
+.customer-profile-hero span { color: var(--brand-gold); }
+.customer-login-icon, .card-brand > svg, .checkout-payment > div button.active, .fulfillment-options button.active { background: var(--brand-tint); color: var(--brand-red); border-color: var(--brand-gold); }
+.customer-login-card form label > div:focus-within { border-color: var(--brand-gold); box-shadow: 0 0 0 3px var(--brand-tint); }
+.pix-copy-box button, .pix-payment-card > a, .card-payment-state > a { background: var(--brand-red); }
+.pix-copy-box button:hover, .pix-payment-card > a:hover { background: var(--brand-black); }
+.customer-order-card > summary > span, .status-panel-footer a { background: var(--brand-tint); color: var(--brand-red); }
+.status-panel-footer a:hover { background: #CA923930; }
+.card-order { border-color: #CA923950; }
+.catalog-api-state > svg { color: var(--brand-gold); }
+
+/* Fields have one focus treatment, on the outer control rather than its contents. */
+:root {
+  --field-focus: #6F0801;
+  --field-ring: #6F080114;
+}
+input, textarea { cursor: text; }
+select { font-family: inherit; }
+:is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), select, textarea) {
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+:is(input, select, textarea):focus-visible { outline: none; }
+body :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), select, textarea):focus {
+  outline: none;
+  border-color: var(--field-focus);
+  box-shadow: 0 0 0 3px var(--field-ring);
+}
+body :is(.login-panel label > div, .customer-login-card form label > div, .currency-input, .user-password-field, .search, .inventory-tools label, .inventory-master-filter label, .catalog-products-panel > header label, .customers-panel > header label, .users-panel > header label):focus-within {
+  border-color: var(--field-focus);
+  box-shadow: 0 0 0 3px var(--field-ring);
+}
+body :is(.login-panel label > div, .customer-login-card form label > div, .currency-input, .user-password-field, .search, .inventory-tools label, .inventory-master-filter label, .catalog-products-panel > header label, .customers-panel > header label, .users-panel > header label) :is(input, select):focus {
+  outline: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+body :is(input, select, textarea)[aria-invalid="true"] {
+  border-color: #b42318;
+}
+body :is(input, select, textarea):disabled {
+  cursor: not-allowed;
+  opacity: .65;
+}
+.admin-shell { font-size: 14px; line-height: 1.5; }
+.admin-shell :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), select, textarea) {
+  min-height: 42px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #25211e;
+}
+.admin-shell textarea { min-height: 104px; }
+.admin-shell :is(input, textarea)::placeholder { color: #817a73; opacity: 1; }
+.admin-shell :is(.currency-input, .user-password-field) { min-height: 42px; }
+.admin-shell :is(.currency-input, .user-password-field) input { min-height: 40px; }
+.admin-shell table { line-height: 1.5; }
+.admin-shell :is(th, td) { padding-block: 12px; }
+.admin-shell th { font-weight: 600; }
+.catalog-dialog { max-height: calc(100dvh - 36px); }
+.catalog-dialog > :is(header, footer) { flex-shrink: 0; }
+.catalog-dialog-body { min-height: 0; grid-auto-rows: max-content; align-content: start; }
+.catalog-dialog-body > .full { grid-column: 1 / -1; }
+.product-image-upload { grid-template-rows: auto; }
+.admin-shell .module-title p { font-size: 14px; line-height: 1.6; }
+.admin-sidebar nav { min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.admin-sidebar nav a { min-height: 40px; }
+.login-panel input, .customer-login-card input { font-size: 16px; }
+.login-heading p { color: #665f58; line-height: 1.6; }
+@media (max-width: 760px) {
+  .admin-shell :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), select, textarea) { font-size: 16px; }
+  .login-panel { border-left: 0; border-top: 1px solid #CA923955; }
+  .admin-sidebar.sidebar-open { background: var(--brand-black); }
+}

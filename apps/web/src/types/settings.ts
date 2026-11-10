@@ -1,0 +1,4 @@
+export type StoreSettings={id:string;storeName:string;isOpen:boolean;averagePreparationMinutes:number;phone?:string;postalCode?:string;street?:string;number?:string;neighborhood?:string;city?:string;state?:string;complement?:string;autoAcceptOrders:boolean;minimumOrder:string;allowPickup:boolean;allowDelivery:boolean;fixedDeliveryFee:string|null;pixEnabled:boolean;cashEnabled:boolean;cardOnDeliveryEnabled:boolean;onlinePaymentEnabled:boolean;pixKey?:string};
+export type StoreHour={id?:string;dayOfWeek:number;isClosed:boolean;opensAt?:string|null;closesAt?:string|null};
+export type DeliveryZone={id:string;name:string;fee:string;estimatedMinutesMin:number;estimatedMinutesMax:number;minimumOrder:string;active:boolean};
+export type SettingsData={store:StoreSettings;hours:StoreHour[];zones:DeliveryZone[]};

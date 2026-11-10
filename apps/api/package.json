@@ -1,0 +1,52 @@
+{
+  "name": "@urfood/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "db:check": "tsx src/database/check-connection.ts",
+    "db:seed-admin": "tsx src/database/seed-admin.ts",
+    "db:migrate-admin": "tsx src/database/migrate-admin.ts",
+    "db:migrate-catalog": "tsx src/database/migrate-catalog.ts",
+    "db:seed-catalog": "tsx src/database/seed-catalog.ts",
+    "db:migrate-inventory": "tsx src/database/migrate-inventory.ts",
+    "db:migrate-finance": "tsx src/database/migrate-finance.ts",
+    "db:migrate-promotions": "tsx src/database/migrate-promotions.ts",
+    "db:migrate-settings": "tsx src/database/migrate-settings.ts",
+    "db:migrate-customer-auth": "tsx src/database/migrate-customer-auth.ts",
+    "db:migrate-customer-email": "tsx src/database/migrate-customer-email.ts",
+    "db:migrate-payments": "tsx src/database/migrate-payments.ts",
+    "db:migrate-product-images": "tsx src/database/migrate-product-images.ts",
+    "db:migrate-catalog-trash": "tsx src/database/migrate-catalog-trash.ts",
+    "db:migrate-catalog-inventory": "tsx src/database/migrate-catalog-inventory.ts",
+    "db:migrate-performance": "tsx src/database/migrate-performance.ts",
+    "db:migrate-digital-fee": "tsx src/database/migrate-digital-fee.ts",
+    "db:migrate-fixed-delivery-fee": "tsx src/database/migrate-fixed-delivery-fee.ts",
+    "db:migrate-checkout-pro": "tsx src/database/migrate-checkout-pro.ts",
+    "db:migrate-pix-qr": "tsx src/database/migrate-pix-qr.ts",
+    "db:migrate-card-payer": "tsx src/database/migrate-card-payer.ts",
+    "db:migrate-order-ownership": "tsx src/database/migrate-order-ownership.ts",
+    "check:payments": "tsx src/diagnostics/check-payments.ts"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.14.3",
+    "sequelize": "^6.37.7",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,0 +1,4 @@
+export type InventoryItem = { id: string; productId?: string | null; name: string; category: string; unit: string; currentStock: string; minimumStock: string; unitCost: string; active: boolean; createdAt: string; updatedAt: string };
+export type InventoryCategory = { id: string; name: string; active: boolean; createdAt: string; updatedAt: string };
+export type InventoryMovement = { id: string; inventoryItemId: string; type: "IN" | "OUT" | "ADJUST"; quantity: string; previousStock: string; resultingStock: string; reason: string; notes?: string; createdBy?: string; createdAt: string; item?: Pick<InventoryItem, "id" | "name" | "unit"> };
+export type InventoryData = { items: InventoryItem[]; categories: InventoryCategory[]; summary: { items: number; lowStock: number; outOfStock: number; totalValue: number } };
