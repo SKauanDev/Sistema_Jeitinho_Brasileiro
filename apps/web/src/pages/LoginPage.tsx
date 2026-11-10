@@ -43,6 +43,8 @@ export function LoginPage() {
               <UserRound />
               <input
                 autoFocus
+                name="username"
+                autoComplete="username"
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
                 placeholder="Digite seu usuário"
@@ -54,6 +56,8 @@ export function LoginPage() {
             <div>
               <LockKeyhole />
               <input
+                name="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 type={showPassword ? "text" : "password"}
@@ -61,6 +65,7 @@ export function LoginPage() {
               />
               <button
                 type="button"
+                aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                 onClick={() => setShowPassword(!showPassword)}
               >
                 {showPassword ? <EyeOff /> : <Eye />}

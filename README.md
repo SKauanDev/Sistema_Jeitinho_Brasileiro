@@ -183,7 +183,7 @@ VITE_API_URL=https://api.seu-dominio.com
 
 Selecione **Production** e os outros ambientes que utilizar. Faça um novo deploy após alterar variáveis: o Vite grava esses valores durante o build.
 
-Para abrir ou atualizar rotas como `/cardapio` e `/admin/dashboard`, crie `apps/web/vercel.json` com o fallback da SPA:
+O arquivo `apps/web/vercel.json` já configura o fallback da SPA para abrir ou atualizar rotas como `/cardapio` e `/admin/dashboard`:
 
 ```json
 {

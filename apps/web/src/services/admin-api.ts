@@ -1,6 +1,6 @@
 import type { DashboardData, Order, OrderStatus } from "../types/admin";
 
-export const API_URL = import.meta.env.VITE_API_URL ?? "/api";
+export const API_URL = (import.meta.env.VITE_API_URL?.trim() || "/api").replace(/\/+$/, "");
 export const SOCKET_URL = import.meta.env.VITE_API_URL ? new URL(import.meta.env.VITE_API_URL, window.location.origin).origin : window.location.origin;
 
 const pendingReads = new Map<string, Promise<unknown>>();
