@@ -105,7 +105,7 @@ export function OrdersKanbanModule() {
   }, []);
 
   useEffect(() => {
-    void Promise.all([adminApi.orders(), adminApi.store()])
+    void Promise.all([adminApi.orders(), adminApi.orderStore()])
       .then(([items, store]) => {
         setOrders(items);
         setAverageMinutes(store.averagePreparationMinutes);
@@ -139,7 +139,7 @@ export function OrdersKanbanModule() {
       alerted.current.add(raw.id);
       setNotice(`Novo pedido #${raw.displayNumber} recebido`);
       void adminApi.orders().then(setOrders);
-      if (Notification.permission === "granted")
+      if ("Notification" in window && Notification.permission === "granted")
         new Notification("Novo pedido", {
           body: `Pedido #${raw.displayNumber} recebido.`,
         });
@@ -159,11 +159,18 @@ export function OrdersKanbanModule() {
       if (document.visibilityState === "visible") refresh();
     }, 60_000);
     window.addEventListener("focus", refresh);
+    const receivedOrders = (event: Event) => {
+      const items = (event as CustomEvent<Order[]>).detail;
+      setOrders(items);
+      setSelected(current => current ? items.find(item => item.id === current.id) ?? null : null);
+    };
+    window.addEventListener("urfood:orders-refreshed", receivedOrders);
     return () => {
       socket.disconnect();
       window.clearInterval(timer);
       window.clearInterval(refreshTimer);
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("urfood:orders-refreshed", receivedOrders);
       stopEdgeScroll();
     };
   }, []);
@@ -535,6 +542,6 @@ function printThermalReceipt(order: Order) {
   printWindow.document
     .write(`<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Pedido #${escapeReceipt(order.displayNumber)}</title><style>
     @page{size:80mm auto;margin:3mm}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#000;font-family:"Courier New",monospace}body{width:74mm;margin:0 auto;font-size:10px;line-height:1.25}.center{text-align:center}.logo{max-width:48mm;max-height:18mm;object-fit:contain;filter:grayscale(1) contrast(1.4)}h1{margin:2px 0;font-size:15px;line-height:1.05}p{margin:2px 0}.dash{margin:7px 0;border-top:1px dashed #000}.double{margin:7px 0;border-top:3px double #000}.order-number{font-size:20px;font-weight:900}.row{display:flex;justify-content:space-between;gap:8px}.row b:last-child,.row strong:last-child{text-align:right}.section-title{margin-bottom:4px;font-weight:900;text-transform:uppercase}.item{padding:4px 0;border-bottom:1px dotted #777}.item-main{display:grid;grid-template-columns:18px 1fr 48px 52px;gap:3px;align-items:start}.item-main span:nth-child(3),.item-main strong{text-align:right}.item small,.item em{display:block;margin:2px 0 0 21px;font-size:9px}.item em{font-weight:700;font-style:normal}.total{font-size:15px;font-weight:900}.footer{margin-top:9px;text-align:center;font-size:9px}.cut{margin-top:14px;text-align:center;letter-spacing:2px}@media print{body{width:100%}.no-print{display:none}}
-  </style></head><body><header class="center"><img class="logo" src="${window.location.origin}/images/borda-dourada.png" alt="Borda Dourada"><h1>PIZZARIA BORDA DOURADA</h1><p>PEDIDO INTERNO · NÃO É DOCUMENTO FISCAL</p></header><div class="dash"></div><section class="center"><div>PEDIDO</div><div class="order-number">#${escapeReceipt(order.displayNumber)}</div><b>${escapeReceipt(date)}</b><p>${order.fulfillmentType === "DELIVERY" ? "DELIVERY" : "RETIRADA"} · ${escapeReceipt(ORDER_STATUS_LABEL[order.status])}</p></section><div class="double"></div><section><div class="section-title">CLIENTE</div><b>${escapeReceipt(order.customerName)}</b><p>${escapeReceipt(order.customerPhone)}</p><p>${address}</p></section><div class="dash"></div><section><div class="item-main section-title"><span>ITEM</span><span>DESCRIÇÃO</span><span>UNIT.</span><span>TOTAL</span></div>${rows}</section>${order.notes ? `<div class="dash"></div><section><b>OBSERVAÇÃO DO PEDIDO</b><p>${escapeReceipt(order.notes)}</p></section>` : ""}<div class="double"></div><section><div class="row"><span>SUBTOTAL</span><b>R$ ${receiptMoney(order.subtotal)}</b></div>${discount ? `<div class="row"><span>DESCONTO ${order.couponCode ? `(${escapeReceipt(order.couponCode)})` : ""}</span><b>- R$ ${receiptMoney(discount)}</b></div>` : ""}<div class="row"><span>TAXA DE ENTREGA</span><b>R$ ${receiptMoney(order.deliveryFee)}</b></div><div class="row total"><span>TOTAL</span><strong>R$ ${receiptMoney(order.total)}</strong></div></section><div class="dash"></div><section><div class="row"><span>FORMA DE PAGAMENTO</span><b>${escapeReceipt(paymentLabel(order.paymentMethod))}</b></div>${Number(order.changeFor) ? `<div class="row"><span>TROCO PARA</span><b>R$ ${receiptMoney(order.changeFor)}</b></div><div class="row"><span>TROCO</span><b>R$ ${receiptMoney(Number(order.changeFor) - Number(order.total))}</b></div>` : ""}</section><footer class="footer"><div class="dash"></div><b>Obrigado pela preferência!</b><p>Confira os itens antes de liberar o pedido.</p><div class="cut">- - - - - CORTE AQUI - - - - -</div></footer><script>window.addEventListener('load',()=>setTimeout(()=>{window.print();window.close()},250));<\/script></body></html>`);
+  </style></head><body><header class="center"><img class="logo" src="${window.location.origin}/images/logo.png" alt="Jeitinho Brasileiro"><h1>PIZZARIA JEITINHO BRASILEIRO</h1><p>PEDIDO INTERNO · NÃO É DOCUMENTO FISCAL</p></header><div class="dash"></div><section class="center"><div>PEDIDO</div><div class="order-number">#${escapeReceipt(order.displayNumber)}</div><b>${escapeReceipt(date)}</b><p>${order.fulfillmentType === "DELIVERY" ? "DELIVERY" : "RETIRADA"} · ${escapeReceipt(ORDER_STATUS_LABEL[order.status])}</p></section><div class="double"></div><section><div class="section-title">CLIENTE</div><b>${escapeReceipt(order.customerName)}</b><p>${escapeReceipt(order.customerPhone)}</p><p>${address}</p></section><div class="dash"></div><section><div class="item-main section-title"><span>ITEM</span><span>DESCRIÇÃO</span><span>UNIT.</span><span>TOTAL</span></div>${rows}</section>${order.notes ? `<div class="dash"></div><section><b>OBSERVAÇÃO DO PEDIDO</b><p>${escapeReceipt(order.notes)}</p></section>` : ""}<div class="double"></div><section><div class="row"><span>SUBTOTAL</span><b>R$ ${receiptMoney(order.subtotal)}</b></div>${discount ? `<div class="row"><span>DESCONTO ${order.couponCode ? `(${escapeReceipt(order.couponCode)})` : ""}</span><b>- R$ ${receiptMoney(discount)}</b></div>` : ""}<div class="row"><span>TAXA DE ENTREGA</span><b>R$ ${receiptMoney(order.deliveryFee)}</b></div><div class="row total"><span>TOTAL</span><strong>R$ ${receiptMoney(order.total)}</strong></div></section><div class="dash"></div><section><div class="row"><span>FORMA DE PAGAMENTO</span><b>${escapeReceipt(paymentLabel(order.paymentMethod))}</b></div>${Number(order.changeFor) ? `<div class="row"><span>TROCO PARA</span><b>R$ ${receiptMoney(order.changeFor)}</b></div><div class="row"><span>TROCO</span><b>R$ ${receiptMoney(Number(order.changeFor) - Number(order.total))}</b></div>` : ""}</section><footer class="footer"><div class="dash"></div><b>Obrigado pela preferência!</b><p>Confira os itens antes de liberar o pedido.</p><div class="cut">- - - - - CORTE AQUI - - - - -</div></footer><script>window.addEventListener('load',()=>setTimeout(()=>{window.print();window.close()},250));<\/script></body></html>`);
   printWindow.document.close();
 }

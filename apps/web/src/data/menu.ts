@@ -1,3 +1,4 @@
+import type { SizePrice } from "../types/catalog";
 export type Extra = {
   id: string;
   name: string;
@@ -14,6 +15,7 @@ export type Product = {
   popular?: boolean;
   extras?: Extra[];
   pizzaSlots?: number;
+  sizes?: SizePrice[];
 };
 
 export const categories = [

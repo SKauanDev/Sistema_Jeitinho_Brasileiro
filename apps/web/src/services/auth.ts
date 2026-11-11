@@ -4,7 +4,7 @@ export type AuthUser = {
   id: string;
   name: string;
   username: string;
-  role: string;
+  role: "ADMIN" | "OPERATOR" | "KITCHEN";
 };
 
 export async function login(username: string, password: string): Promise<AuthUser> {
@@ -35,3 +35,5 @@ export function getCurrentUser(): AuthUser | null {
   if (!raw) return null;
   try { return JSON.parse(raw) as AuthUser; } catch { return null; }
 }
+
+export const adminHome = (user = getCurrentUser()) => user?.role === "KITCHEN" ? "/pedidos" : "/admin/dashboard";

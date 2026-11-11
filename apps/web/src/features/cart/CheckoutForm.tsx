@@ -8,6 +8,8 @@ import { formatCurrencyField, parseCurrencyField } from "../../utils/currency-fi
 const DIGITAL_SECURITY_FEE = 0.99;
 
 export type CheckoutItem = {
+  size?: string;
+  pizzaSelections?: Array<{ mode: "whole" | "half"; leftId?: string; rightId?: string }>;
   productId: string;
   productName: string;
   quantity: number;

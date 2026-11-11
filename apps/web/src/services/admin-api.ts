@@ -1,3 +1,4 @@
+import type { StoreSettings } from "../types/settings";
 import type { DashboardData, Order, OrderStatus } from "../types/admin";
 
 export const API_URL = (import.meta.env.VITE_API_URL?.trim() || "/api").replace(/\/+$/, "");
@@ -32,6 +33,7 @@ export const adminApi = {
   dashboard: (period: string, start?: string, end?: string) => authFetch<DashboardData>(`/admin/dashboard?period=${encodeURIComponent(period)}${start ? `&start=${encodeURIComponent(start)}` : ""}${end ? `&end=${encodeURIComponent(end)}` : ""}`),
   orders: () => authFetch<Order[]>("/admin/orders"),
   updateOrderStatus: (id: string, status: OrderStatus, reason?: string) => authFetch<Order>(`/admin/orders/${id}/status`, { method: "PATCH", body: JSON.stringify({ status, reason }) }),
+  orderStore: () => authFetch<Partial<StoreSettings> & { storeName: string; averagePreparationMinutes: number }>("/admin/orders/store"),
   store: () => authFetch<{ id: string; storeName: string; isOpen: boolean; configuredOpen: boolean; averagePreparationMinutes: number }>("/admin/store"),
   updateStoreStatus: (isOpen: boolean) => authFetch<{ id: string; storeName: string; isOpen: boolean; configuredOpen: boolean }>("/admin/store/status", { method: "PATCH", body: JSON.stringify({ isOpen }) }),
 };

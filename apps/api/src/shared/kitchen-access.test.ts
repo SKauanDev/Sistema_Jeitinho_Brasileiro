@@ -1,0 +1,65 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { once } from "node:events";
+import http from "node:http";
+import test from "node:test";
+import express from "express";
+import jwt from "jsonwebtoken";
+import { Server } from "socket.io";
+import { io as connect } from "socket.io-client";
+import { env } from "../config/env.js";
+import { Order, OrderStatusHistory, User } from "../database/models.js";
+import { sequelize } from "../database/sequelize.js";
+import { adminRouter } from "../modules/admin/admin.routes.js";
+import { authRouter } from "../modules/auth/auth.routes.js";
+import { userRouter } from "../modules/users/user.routes.js";
+import { ADMIN_ROOM, configureSocketSecurity } from "../realtime/socket-security.js";
+
+test("Cozinha: login, pedidos e sininho permitidos; demais módulos e contas bloqueados", { skip: process.env.RUN_DB_KITCHEN_TESTS !== "true", timeout: 20000 }, async () => {
+  const suffix = randomUUID().slice(0, 8), orderId = randomUUID();
+  const app = express(); app.use(express.json()); app.use("/auth", authRouter); app.use("/admin", adminRouter); app.use("/admin/users", userRouter);
+  const httpServer = http.createServer(app), io = new Server(httpServer); configureSocketSecurity(io); app.set("io", io);
+  httpServer.listen(0, "127.0.0.1"); await once(httpServer, "listening");
+  const address = httpServer.address(); assert.ok(address && typeof address !== "string");
+  const base = `http://127.0.0.1:${address.port}`;
+  let userId: string | undefined;
+  let socket: ReturnType<typeof connect> | undefined;
+  try {
+    const admin = await User.findOne({ where: { active: true, role: "ADMIN" } }); assert.ok(admin);
+    const adminToken = jwt.sign({ sub: admin.getDataValue("id"), role: "ADMIN" }, env.jwtSecret, { expiresIn: "2m" });
+    const send = (path: string, token: string, method = "GET", body?: unknown) => fetch(base + path, { method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const created = await send("/admin/users", adminToken, "POST", { name: "Cozinha QA", username: `qa-${suffix}`, email: `qa-${suffix}@example.invalid`, password: `QA-${randomUUID()}`, role: "KITCHEN" });
+    assert.equal(created.status, 201);
+    const account = await created.json(); userId = account.id;
+    assert.equal(account.role, "KITCHEN"); assert.equal(account.passwordHash, undefined);
+    const password = `QA-${randomUUID()}`;
+    assert.equal((await send(`/admin/users/${userId}`, adminToken, "PATCH", { password })).status, 200);
+    const login = await fetch(base + "/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: `qa-${suffix}`, password }) });
+    assert.equal(login.status, 200);
+    const session = await login.json(); assert.equal(session.user.role, "KITCHEN");
+    const token = session.token;
+    assert.equal((await send("/admin/orders", token)).status, 200);
+    const metadata = await send("/admin/orders/store", token); assert.equal(metadata.status, 200);
+    assert.equal((await metadata.json()).minimumOrder, undefined);
+    for (const path of ["/admin/dashboard", "/admin/catalog", "/admin/inventory", "/admin/customers", "/admin/finance", "/admin/promotions", "/admin/reports", "/admin/settings", "/admin/users", "/admin/store"]) assert.equal((await send(path, token)).status, 403, path);
+    assert.equal((await send("/admin/store/status", token, "PATCH", { isOpen: false })).status, 403);
+    assert.equal((await send("/admin/users", token, "POST", { role: "ADMIN" })).status, 403);
+    assert.equal((await send(`/admin/users/${userId}`, adminToken, "PATCH", { role: "ADMIN" })).status, 400);
+    await Order.create({ id: orderId, customerName: "Cozinha QA temporário", customerPhone: "32900000000", fulfillmentType: "PICKUP", paymentMethod: "CASH", paymentStatus: "NOT_REQUIRED", subtotal: 10, total: 10, status: "NEW" });
+    assert.equal((await send(`/admin/orders/${orderId}/status`, token, "PATCH", { status: "CONFIRMED" })).status, 200);
+    socket = connect(base, { auth: { token }, transports: ["websocket"], reconnection: false });
+    await new Promise<void>((resolve, reject) => { socket!.once("connect", () => resolve()); socket!.once("connect_error", reject); });
+    const received = new Promise<{ id: string }>(resolve => socket!.once("order:new", resolve));
+    io.to(ADMIN_ROOM).emit("order:new", { id: orderId });
+    assert.equal((await received).id, orderId);
+    assert.equal((await socket.timeout(2000).emitWithAck("watch:order", orderId)).ok, false);
+    await User.update({ active: false }, { where: { id: userId } });
+    assert.equal((await send("/admin/orders", token)).status, 401);
+  } finally {
+    socket?.disconnect();
+    await OrderStatusHistory.destroy({ where: { orderId } }); await Order.destroy({ where: { id: orderId } });
+    if (userId) await User.destroy({ where: { id: userId } });
+    await new Promise<void>(resolve => io.close(() => resolve()));
+    await sequelize.close();
+  }
+});

@@ -1,8 +1,8 @@
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { LoginPage } from "./pages/LoginPage";
-import { getCurrentUser } from "./services/auth";
+import { adminHome, getCurrentUser } from "./services/auth";
 import "./styles.css";
 import "./admin.css";
 import "./pizza.css";
@@ -27,13 +27,15 @@ const SettingsModule = lazy(() => import("./features/admin/SettingsModule").then
 const UsersModule = lazy(() => import("./features/admin/UsersModule").then(module => ({ default: module.UsersModule })));
 
 function ProtectedAdmin() {
+  const location = useLocation();
+  if (localStorage.getItem("urfood_token") && getCurrentUser()?.role === "KITCHEN" && location.pathname !== "/pedidos") return <Navigate to="/pedidos" replace />;
   return localStorage.getItem("urfood_token")
     ? <Outlet />
     : <Navigate to="/" replace />;
 }
 
 function AdminOnly() {
-  return getCurrentUser()?.role === "ADMIN" ? <Outlet /> : <Navigate to="/admin/dashboard" replace />;
+  return getCurrentUser()?.role === "ADMIN" ? <Outlet /> : <Navigate to={adminHome()} replace />;
 }
 
 createRoot(document.getElementById("root")!).render(

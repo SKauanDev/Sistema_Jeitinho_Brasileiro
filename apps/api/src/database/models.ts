@@ -13,7 +13,7 @@ export const User = sequelize.define("User", {
   username: { type: DataTypes.STRING(80), allowNull: false, unique: true },
   email: { type: DataTypes.STRING(190), allowNull: false, unique: true },
   passwordHash: { type: DataTypes.STRING(255), allowNull: false },
-  role: { type: DataTypes.ENUM("ADMIN", "OPERATOR"), allowNull: false, defaultValue: "OPERATOR" },
+  role: { type: DataTypes.ENUM("ADMIN", "OPERATOR", "KITCHEN"), allowNull: false, defaultValue: "OPERATOR" },
   active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
 }, { tableName: "users" });
 
@@ -59,6 +59,7 @@ export const Product = sequelize.define("Product", {
   promotionalPrice: DataTypes.DECIMAL(10, 2),
   featured: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   pizzaSlots: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+  sizes: { type: DataTypes.JSON, allowNull: true },
   position: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   trashedAt: DataTypes.DATE(3),
@@ -176,7 +177,7 @@ export const OrderStatusHistory = sequelize.define("OrderStatusHistory", {
 
 export const StoreSetting = sequelize.define("StoreSetting", {
   id,
-  storeName: { type: DataTypes.STRING(160), allowNull: false, defaultValue: "Pizzaria Borda Dourada" },
+  storeName: { type: DataTypes.STRING(160), allowNull: false, defaultValue: "Pizzaria Jeitinho Brasileiro" },
   isOpen: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   averagePreparationMinutes: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 30 },
   phone: DataTypes.STRING(30), whatsapp: DataTypes.STRING(30), address: DataTypes.STRING(255), logoUrl: DataTypes.STRING(2048), coverUrl: DataTypes.STRING(2048),

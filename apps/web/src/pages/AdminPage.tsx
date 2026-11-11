@@ -18,9 +18,9 @@ import {
   X,
 } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { createAdminSocket } from "../services/realtime";
+import { useOrderAlerts } from "../features/admin/useOrderAlerts";
 import { adminApi } from "../services/admin-api";
-import { getCurrentUser, logout } from "../services/auth";
+import { adminHome, getCurrentUser, logout } from "../services/auth";
 
 const navigation: Array<{ path: string; label: string; icon: typeof BarChart3; orders?: boolean; adminOnly?: boolean }> = [
   { path: "/admin/dashboard", label: "Dashboard", icon: BarChart3 },
@@ -35,45 +35,9 @@ const navigation: Array<{ path: string; label: string; icon: typeof BarChart3; o
   { path: "/usuarios", label: "Usuários", icon: UserRoundCog, adminOnly: true },
 ];
 
-let notificationAudioContext: AudioContext | null = null;
-
-function getNotificationAudioContext() {
-  notificationAudioContext ??= new AudioContext();
-  return notificationAudioContext;
-}
-
-function ringNotificationBell() {
-  try {
-    const context = getNotificationAudioContext();
-    const play = () => {
-      const startedAt = context.currentTime;
-      [880, 1320, 1760].forEach((frequency, index) => {
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.type = "sine";
-        oscillator.frequency.setValueAtTime(frequency, startedAt);
-        gain.gain.setValueAtTime(index === 0 ? 0.2 : 0.08, startedAt);
-        gain.gain.exponentialRampToValueAtTime(0.001, startedAt + 1.15);
-        oscillator.connect(gain);
-        gain.connect(context.destination);
-        oscillator.start(startedAt);
-        oscillator.stop(startedAt + 1.15);
-      });
-    };
-    if (context.state === "suspended")
-      void context
-        .resume()
-        .then(play)
-        .catch(() => undefined);
-    else play();
-  } catch {
-    /* O navegador pode bloquear áudio antes da primeira interação. */
-  }
-}
-
 export function AdminPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [newOrders, setNewOrders] = useState(0);
+  const { newOrders, soundReady, enableSound } = useOrderAlerts();
   const [store, setStore] = useState<{
     isOpen: boolean;
     configuredOpen: boolean;
@@ -82,61 +46,19 @@ export function AdminPage() {
   const [changingStore, setChangingStore] = useState(false);
   const location = useLocation();
   const user = getCurrentUser();
+  const kitchen = user?.role === "KITCHEN";
   const current =
     navigation.find((item) => location.pathname === item.path) ?? navigation[0];
 
   useEffect(() => {
-    const unlockNotificationSound = () => {
-      try {
-        void getNotificationAudioContext().resume();
-      } catch {
-        /* Áudio indisponível. */
-      }
+    const refreshStore = () => {
+      if (kitchen) void adminApi.orderStore().then(store => setStore({ ...store, isOpen: false, configuredOpen: false })).catch(() => undefined);
+      else void adminApi.store().then(setStore).catch(() => undefined);
     };
-    window.addEventListener("pointerdown", unlockNotificationSound, {
-      once: true,
-    });
-    window.addEventListener("keydown", unlockNotificationSound, { once: true });
-    const refreshStore = () => void adminApi.store().then(setStore).catch(() => undefined);
-    const refreshVisibleStore = () => { if (document.visibilityState === "visible") refreshStore(); };
     refreshStore();
-    window.addEventListener("focus", refreshStore);
-    document.addEventListener("visibilitychange", refreshVisibleStore);
-    const storeTimer = window.setInterval(
-      refreshStore,
-      15_000,
-    );
-    void adminApi
-      .orders()
-      .then((orders) =>
-        setNewOrders(orders.filter((order) => order.status === "NEW").length),
-      )
-      .catch(() => undefined);
-    const socket = createAdminSocket();
-    socket.on("order:new", () => {
-      ringNotificationBell();
-      setNewOrders((count) => count + 1);
-    });
-    socket.on(
-      "order:updated",
-      () =>
-        void adminApi
-          .orders()
-          .then((orders) =>
-            setNewOrders(
-              orders.filter((order) => order.status === "NEW").length,
-            ),
-          ),
-    );
-    return () => {
-      socket.disconnect();
-      window.clearInterval(storeTimer);
-      window.removeEventListener("focus", refreshStore);
-      document.removeEventListener("visibilitychange", refreshVisibleStore);
-      window.removeEventListener("pointerdown", unlockNotificationSound);
-      window.removeEventListener("keydown", unlockNotificationSound);
-    };
-  }, []);
+    const timer = window.setInterval(refreshStore, 15_000);
+    return () => window.clearInterval(timer);
+  }, [kitchen]);
 
   function signOut() {
     logout();
@@ -162,8 +84,8 @@ export function AdminPage() {
     <div className="admin-shell">
       <aside id="admin-sidebar" className={`admin-sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
         <header>
-          <a href="/admin/dashboard">
-            <img src="/images/borda-dourada.png" alt="Borda Dourada" />
+          <a href={adminHome()}>
+            <img src="/images/logo.png" alt="Pizzaria Jeitinho Brasileiro" />
           </a>
           <button onClick={() => setSidebarOpen(false)} aria-label="Fechar menu">
             <X />
@@ -171,7 +93,7 @@ export function AdminPage() {
         </header>
         <nav aria-label="Menu principal">
           <small>MENU PRINCIPAL</small>
-          {navigation.filter(item => !item.adminOnly || user?.role === "ADMIN").map((item) => {
+          {navigation.filter(item => kitchen ? item.orders : !item.adminOnly || user?.role === "ADMIN").map((item) => {
             const Icon = item.icon;
             return (
               <NavLink
@@ -187,7 +109,7 @@ export function AdminPage() {
               </NavLink>
             );
           })}
-          <a
+          {!kitchen && <a
             className="sidebar-menu-preview"
             href="/cardapio"
             target="_blank"
@@ -197,7 +119,7 @@ export function AdminPage() {
             <Store />
             <span className="sidebar-label">Ver cardápio</span>
             <ExternalLink />
-          </a>
+          </a>}
         </nav>
         <footer>
           <div className="admin-user-avatar">
@@ -205,7 +127,7 @@ export function AdminPage() {
           </div>
           <span>
             <strong>{user?.name ?? "Administrador"}</strong>
-            <small>{user?.role ?? "ADMIN"}</small>
+            <small>{kitchen ? "Cozinha" : user?.role ?? "ADMIN"}</small>
           </span>
           <button onClick={signOut} title="Sair">
             <LogOut />
@@ -224,34 +146,35 @@ export function AdminPage() {
             <Menu />
           </button>
           <div className="admin-breadcrumb">
-            <span>{store?.storeName ?? "Borda Dourada"}</span>
+            <span>{store?.storeName ?? "Jeitinho Brasileiro"}</span>
             <b>/</b>
             <strong>{current.label}</strong>
           </div>
           <div className="admin-actions">
-            <button
+            {!kitchen && <button
               className={`store-status-button ${store?.isOpen ? "open" : "closed"}`}
               disabled={!store || changingStore}
               onClick={toggleStore}
             >
               <i />
               {store?.isOpen ? "Loja aberta" : "Loja fechada"}
-            </button>
-            <a
+            </button>}
+            {!kitchen && <a
               className="menu-preview-link"
               href="/cardapio"
               target="_blank"
               rel="noopener noreferrer"
             >
               <Store /> Ver cardápio <ExternalLink />
-            </a>
-            <button className="notification-button">
-              <Bell />
+            </a>}
+            <button className="notification-button notification-sound" title={soundReady ? "Testar som de novo pedido" : "Ativar som de novos pedidos"} onClick={() => void enableSound()} aria-label={soundReady ? "Testar som de novo pedido" : "Ativar som de novos pedidos"}>
+              <Bell /><span>{soundReady ? "Som ativo" : "Ativar som"}</span>
               {newOrders > 0 && <i>{newOrders}</i>}
             </button>
             <div className="top-avatar">{user?.name?.charAt(0) ?? "D"}</div>
           </div>
         </header>
+        {!soundReady && <div className="order-sound-banner" role="status"><Bell /><span>Ative o som para ouvir quando chegar um pedido.</span><button onClick={() => void enableSound()}>Ativar e testar som</button></div>}
         <main>
           <Outlet />
         </main>

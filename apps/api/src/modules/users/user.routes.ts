@@ -25,12 +25,14 @@ userRouter.post("/", async (request, response) => {
   const username = normalizeUsername(request.body.username);
   const email = String(request.body.email ?? "").trim().toLowerCase();
   const password = String(request.body.password ?? "");
+  const role = request.body.role ?? "OPERATOR";
+  if (!["OPERATOR", "KITCHEN"].includes(role)) { response.status(400).json({ message: "Perfil inválido." }); return; }
   if (name.length < 3) { response.status(400).json({ message: "Informe o nome completo do usuário." }); return; }
   if (!/^[a-z0-9._-]{3,40}$/.test(username)) { response.status(400).json({ message: "O usuário deve ter de 3 a 40 caracteres, sem espaços." }); return; }
   if (!/^\S+@\S+\.\S+$/.test(email)) { response.status(400).json({ message: "Informe um e-mail válido." }); return; }
   if (password.length < 8) { response.status(400).json({ message: "A senha deve possuir pelo menos 8 caracteres." }); return; }
   try {
-    const user = await User.create({ name, username, email, passwordHash: await hash(password, 12), role: "OPERATOR", active: true });
+    const user = await User.create({ name, username, email, passwordHash: await hash(password, 12), role, active: true });
     response.status(201).json(await User.findByPk(user.getDataValue("id"), { attributes: publicAttributes }));
   } catch (error) {
     const message = validationError(error); if (message) { response.status(409).json({ message }); return; } throw error;
@@ -42,6 +44,10 @@ userRouter.patch("/:id", async (request, response) => {
   if (!user) { response.status(404).json({ message: "Usuário não encontrado." }); return; }
   if (user.getDataValue("role") === "ADMIN") { response.status(403).json({ message: "O administrador fixo não pode ser alterado por este módulo." }); return; }
   const changes: Record<string, unknown> = {};
+  if (request.body.role !== undefined) {
+    if (!["OPERATOR", "KITCHEN"].includes(request.body.role)) { response.status(400).json({ message: "Perfil inválido." }); return; }
+    changes.role = request.body.role;
+  }
   if (request.body.name !== undefined) { const name = String(request.body.name).trim(); if (name.length < 3) { response.status(400).json({ message: "Informe o nome completo do usuário." }); return; } changes.name = name; }
   if (request.body.username !== undefined) { const username = normalizeUsername(request.body.username); if (!/^[a-z0-9._-]{3,40}$/.test(username)) { response.status(400).json({ message: "Usuário inválido." }); return; } changes.username = username; }
   if (request.body.email !== undefined) { const email = String(request.body.email).trim().toLowerCase(); if (!/^\S+@\S+\.\S+$/.test(email)) { response.status(400).json({ message: "Informe um e-mail válido." }); return; } changes.email = email; }

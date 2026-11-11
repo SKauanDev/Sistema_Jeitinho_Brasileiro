@@ -1477,7 +1477,7 @@ button:disabled {
     800 20px Arial,
     Helvetica,
     sans-serif;
-  margin: 3px 0 11px;
+  margin: 6px 0 20px;
 }
 
 .fulfillment-options {
@@ -1528,8 +1528,8 @@ button:disabled {
 .checkout-fields {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 11px;
+  gap: 14px 12px;
+  margin-top: 20px;
 }
 
 .checkout-fields label {
@@ -1556,8 +1556,8 @@ button:disabled {
 }
 
 .address-fields {
-  margin-top: 13px;
-  padding-top: 11px;
+  margin-top: 24px;
+  padding-top: 20px;
   border-top: 1px solid #eee9e4;
 }
 
@@ -3352,15 +3352,15 @@ button:disabled {
 
 /* Operational checkout */
 .checkout-operational-alert {
-  margin: 0;
-  padding: 12px 14px;
+  margin: 20px 0;
+  padding: 16px;
   border: 1px solid #efc7bf;
   border-radius: 11px;
   background: #fff2ef;
   color: #a23d2f;
   font-size: 13px;
   font-weight: 700;
-  line-height: 1.45;
+  line-height: 1.6;
 }
 .fulfillment-options button:disabled {
   cursor: not-allowed;

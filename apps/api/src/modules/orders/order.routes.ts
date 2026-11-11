@@ -1,5 +1,8 @@
+import { PizzaValidationError } from "../catalog/pizza-sizes.js";
+import { resolvePizzaConfiguration, type PizzaSelection, type PizzaProduct } from "./pizza-configuration.js";
 import { Router } from "express";
 import {
+  Category,
   Option,
   Order,
   OrderItem,
@@ -51,6 +54,8 @@ type OrderPayload = {
   couponCode?: string;
   notes?: string;
   items?: Array<{
+    size?: string;
+    pizzaSelections?: PizzaSelection[];
     productId?: string;
     productName?: string;
     quantity?: number;
@@ -72,6 +77,7 @@ orderRouter.post("/", async (request, response) => {
   if (!Array.isArray(payload.items) || payload.items.length > 50 || payload.items.some(item => !item || typeof item !== "object" || (item.options !== undefined && (!Array.isArray(item.options) || item.options.length > 30 || item.options.some(option => !option || typeof option !== "object"))))) {
     response.status(400).json({ message: "Carrinho inválido ou muito grande." }); return;
   }
+  if (payload.items.some(item => item.pizzaSelections !== undefined && (!Array.isArray(item.pizzaSelections) || item.pizzaSelections.length > 10 || item.pizzaSelections.some(pizza => !pizza || typeof pizza !== "object")))) { response.status(400).json({ message: "Sele??o de pizzas inv?lida." }); return; }
   if (
     !payload.customerName ||
     !payload.customerPhone ||
@@ -138,12 +144,13 @@ orderRouter.post("/", async (request, response) => {
       throw new Error("A forma de pagamento selecionada está indisponível.");
     if (payload.fulfillmentType === "DELIVERY") assertDeliveryLocality({ city: settings.getDataValue("city"), state: settings.getDataValue("state") }, payload.address ?? {});
     const result = await sequelize.transaction({ isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED }, async (transaction) => {
-      const productIds = [...new Set(payload.items!.map(item => item.productId).filter((id): id is string => Boolean(id)))];
+      const productIds = [...new Set(payload.items!.flatMap(item => [item.productId, ...(item.pizzaSelections ?? []).flatMap(pizza => [pizza.leftId, pizza.rightId])]).filter((id): id is string => Boolean(id)))];
       const optionIds = [...new Set(payload.items!.flatMap(item => (item.options ?? []).map(option => option.optionId)).filter((id): id is string => Boolean(id)))];
       // Two batched reads instead of one database round trip per product/additional.
-      const products = await Product.findAll({ where: { id: { [Op.in]: productIds }, active: true, trashedAt: null }, transaction });
+      const products = await Product.findAll({ where: { id: { [Op.in]: productIds }, active: true, trashedAt: null }, include: [{ model: Category, as: "category", where: { active: true } }], transaction });
       const options = optionIds.length ? await Option.findAll({ where: { id: { [Op.in]: optionIds }, active: true }, transaction }) : [];
       const productsById = new Map(products.map(product => [String(product.getDataValue("id")), product]));
+      const pizzaProducts = new Map(products.map(product => { const data = product.get({ plain: true }) as any; return [String(data.id), { ...data, category: data.category?.name ?? "" } as PizzaProduct]; }));
       const optionsById = new Map(options.map(option => [String(option.getDataValue("id")), option]));
       const normalizedItems = await Promise.all(
         payload.items!.map(async (item) => {
@@ -152,12 +159,10 @@ orderRouter.post("/", async (request, response) => {
           if (!product)
             throw new Error("Um produto do carrinho não está mais disponível.");
           const quantity = orderQuantity(item.quantity);
-          const unitPrice = Number(
-            product.getDataValue("promotionalPrice") ??
-              product.getDataValue("price"),
-          );
+          const configuration = resolvePizzaConfiguration(pizzaProducts.get(item.productId)!, item.size, item.pizzaSelections, pizzaProducts);
+          const unitPrice = configuration.unitPrice;
           const normalizedOptions = await Promise.all(
-            (item.options ?? []).map(async (selected) => {
+            (item.options ?? []).filter(selected => selected.group !== "Tamanho" && (item.pizzaSelections === undefined || !/^Pizza \d+/.test(selected.group ?? ""))).map(async (selected) => {
               if (!selected.optionId) return { ...selected, price: 0 };
               const option = optionsById.get(selected.optionId);
               if (!option)
@@ -171,6 +176,7 @@ orderRouter.post("/", async (request, response) => {
               };
             }),
           );
+          normalizedOptions.push(...configuration.options);
           const optionsTotal = normalizedOptions.reduce(
             (sum, option) => sum + Math.max(0, Number(option.price ?? 0)),
             0,
@@ -350,6 +356,7 @@ orderRouter.post("/", async (request, response) => {
   } catch (error) {
     console.error("Falha ao criar pedido:", error);
     const detail = error instanceof Error ? error.message : "";
+    const invalidPizza = error instanceof PizzaValidationError;
     const operational = [
       "loja está fechada",
       "indisponível",
@@ -369,13 +376,13 @@ orderRouter.post("/", async (request, response) => {
       String(payload.paymentMethod),
     );
     const message =
-      expected || operational
+      expected || operational || invalidPizza
         ? detail
         : paymentFailure && detail
           ? `Falha no pagamento: ${detail}`
           : "Não foi possível registrar o pedido.";
     response
-      .status(expected || operational ? 409 : paymentFailure ? 502 : 500)
+      .status(invalidPizza ? 400 : expected || operational ? 409 : paymentFailure ? 502 : 500)
       .json({ message });
   }
 });

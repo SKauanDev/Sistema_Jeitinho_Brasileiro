@@ -6,6 +6,7 @@ Sistema de pedidos para a Pizzaria Borda Dourada, com cardápio digital, montage
 
 - Cardápio com categorias, imagens, preços e disponibilidade.
 - Escolha de sabores por pizza, inclusive em combos com várias pizzas.
+- Preços por tamanho P, M, G e GG no mesmo cadastro. O cliente escolhe um tamanho; no meio a meio, vale o maior preço dos dois sabores nesse tamanho. Sabores repetidos na mesma pizza são bloqueados.
 - Carrinho, checkout, entrega ou retirada e acompanhamento do pedido.
 - Pagamentos via Mercado Pago: Pix e cartão.
 - Painel com dashboard, pedidos, cardápio, estoque, clientes, financeiro, cupons, relatórios, configurações e usuários.
@@ -151,6 +152,14 @@ Referência: [acesso remoto na HostGator](https://suporte.hostgator.com.br/hc/pt
 
 ### Migrações
 
+Para habilitar os tamanhos de pizza em outro banco, execute antes de iniciar a nova versão da API:
+
+```powershell
+npm run db:migrate-pizza-sizes -w @urfood/api
+```
+
+A migração adiciona a coluna JSON `products.sizes` e preserva os produtos existentes. No admin, edite uma pizza e preencha os preços em **Tamanhos e preços**; campos vazios não são oferecidos ao cliente. Sem tamanhos preenchidos, o produto mantém o preço único. Para organizar cadastros antigos separados por tamanho, consolide os preços no cadastro desejado e revise os antigos antes de desativá-los; a migração não mescla produtos automaticamente. Nos combos, os sabores continuam sendo escolhidos por pizza e o preço é o do combo.
+
 Os scripts ficam em `apps/api/src/database` e estão registrados em `apps/api/package.json`. Aplique as migrações correspondentes ao schema do backup importado, com backup prévio. Não execute seeds sobre um banco existente apenas para tentar corrigir uma conexão.
 
 Entre as atualizações necessárias estão a associação dos pedidos às contas dos clientes e os campos usados pelos pagamentos:
@@ -211,6 +220,25 @@ Na hospedagem do backend:
 6. Valide `/health`, login, cardápio, eventos e checkout pelo domínio publicado.
 
 Um frontend publicado não consegue acessar `localhost:3333` do seu computador. Se usar um túnel temporário, ele precisa permanecer online; o endereço deve estar coerente com a configuração da API e dos webhooks.
+
+## Acesso da cozinha e alertas
+
+Em **Usuários → Novo usuário** (ou ao editar uma conta), selecione **Cozinha** em **Perfil de acesso**. Somente o administrador pode gerenciar essas contas.
+
+- A conta Cozinha entra diretamente em `/pedidos`, acompanha o Kanban, avança os status e imprime os pedidos.
+- Os demais módulos ficam ocultos e bloqueados na API. Abrir suas URLs diretamente redireciona para Pedidos.
+- O sininho recebe os eventos de novos pedidos por Socket.IO. Uma consulta a cada 10 segundos também recupera pedidos quando o tempo real estiver desconectado, sem repetir o alerta do mesmo pedido.
+- O painel informa **Som ativo** ou **Ativar som**. O botão permite ativar e testar o alerta. O navegador pode exigir esse clique após abrir ou atualizar a página; mantenha a página aberta e o áudio do dispositivo habilitado.
+
+O login tenta liberar o áudio durante a interação com o formulário. Se o navegador ainda bloquear a reprodução, aparece o aviso de ativação. Veja as [regras de áudio dos navegadores](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Autoplay).
+
+Em outro banco, habilite o perfil antes de iniciar a nova versão da API:
+
+```powershell
+npm run db:migrate-kitchen-role -w @urfood/api
+```
+
+A migração preserva as contas existentes. Após publicar, atualize a API no VPS e o frontend na Vercel.
 
 ## Mercado Pago
 

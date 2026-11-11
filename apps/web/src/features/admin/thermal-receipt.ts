@@ -1,5 +1,5 @@
 import QRCode from "qrcode";
-import { settingsApi } from "../../services/settings-api";
+import { adminApi } from "../../services/admin-api";
 import { ORDER_STATUS_LABEL, type Order } from "../../types/admin";
 
 const paymentNames: Record<string, string> = {
@@ -45,7 +45,7 @@ export async function printProfessionalThermalReceipt(order: Order) {
   );
   try {
     const [{ store }, qrCode] = await Promise.all([
-      settingsApi.get(),
+      adminApi.orderStore().then(store => ({ store })),
       QRCode.toDataURL(`${window.location.origin}/status/${order.id}`, {
         width: 260,
         margin: 1,

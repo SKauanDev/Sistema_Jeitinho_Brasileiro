@@ -12,7 +12,7 @@ import {
 import { sequelize } from "../../database/sequelize.js";
 import { expireUnpaidOrders } from "../payments/payment-timeout.service.js";
 import { ADMIN_ROOM } from "../../realtime/socket-security.js";
-import { requireAdmin, requireAuth } from "../../shared/auth.middleware.js";
+import { requireAdminArea, requireAuth } from "../../shared/auth.middleware.js";
 import {
   ORDER_STATUSES,
   ORDER_TRANSITIONS,
@@ -24,7 +24,7 @@ import {
 } from "../inventory/catalog-inventory.service.js";
 
 export const adminRouter = Router();
-adminRouter.use(requireAuth, requireAdmin);
+adminRouter.use(requireAuth, requireAdminArea);
 
 function periodRange(period: string, customStart?: string, customEnd?: string) {
   const now = new Date();
@@ -219,6 +219,12 @@ adminRouter.get("/dashboard", async (request, response) => {
   });
 });
 
+adminRouter.get("/orders/store", async (_request, response) => {
+  const setting = await StoreSetting.findOne();
+  const fields = ["storeName", "averagePreparationMinutes", "phone", "street", "number", "complement", "neighborhood", "city", "state", "postalCode", "pixKey"];
+  response.json(Object.fromEntries(fields.map(key => [key, setting?.getDataValue(key)])));
+});
+
 adminRouter.get("/orders", async (_request, response) => {
   await expireUnpaidOrders(_request.app.get("io") as Server | undefined);
   const orders = await Order.findAll({
@@ -309,7 +315,7 @@ adminRouter.get("/store", async (_request, response) => {
   const [settings] = await StoreSetting.findOrCreate({
     where: {},
     defaults: {
-      storeName: "Pizzaria Borda Dourada",
+      storeName: "Pizzaria Jeitinho Brasileiro",
       isOpen: true,
       averagePreparationMinutes: 30,
     },
@@ -328,7 +334,7 @@ adminRouter.patch("/store/status", async (request, response) => {
   }
   const [settings] = await StoreSetting.findOrCreate({
     where: {},
-    defaults: { storeName: "Pizzaria Borda Dourada" },
+    defaults: { storeName: "Pizzaria Jeitinho Brasileiro" },
   });
   await settings.update({ isOpen: request.body.isOpen });
   const plain = settings.get({ plain: true });

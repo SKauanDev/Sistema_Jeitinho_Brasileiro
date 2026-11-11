@@ -1,3 +1,4 @@
+import { parseSizes } from "./pizza-sizes.js";
 import { Op } from "sequelize";
 import { Router } from "express";
 import {
@@ -314,13 +315,16 @@ adminCatalogRouter.post("/products", async (request, response) => {
       .json({ message: "Nome, categoria e preço válido são obrigatórios." });
     return;
   }
+  let sizes;
+  try { sizes = parseSizes(request.body.sizes); } catch (error) { response.status(400).json({ message: (error as Error).message }); return; }
   const product = await Product.create({
+    sizes,
     name,
     categoryId,
     description: request.body.description,
     imageUrl: request.body.imageUrl,
-    price,
-    promotionalPrice: request.body.promotionalPrice || null,
+    price: sizes.length ? Math.min(...sizes.map(entry => entry.price)) : price,
+    promotionalPrice: sizes.length ? null : request.body.promotionalPrice || null,
     featured: Boolean(request.body.featured),
     pizzaSlots: Math.max(0, Number(request.body.pizzaSlots ?? 0)),
     active: request.body.active !== false,
@@ -336,6 +340,10 @@ adminCatalogRouter.patch("/products/:id", async (request, response) => {
     return;
   }
   const changes: Record<string, unknown> = {};
+  if (request.body.sizes !== undefined) {
+    try { changes.sizes = parseSizes(request.body.sizes); } catch (error) { response.status(400).json({ message: (error as Error).message }); return; }
+  }
+
   for (const key of [
     "name",
     "categoryId",
@@ -353,6 +361,7 @@ adminCatalogRouter.patch("/products/:id", async (request, response) => {
         request.body[key] === "" && key === "promotionalPrice"
           ? null
           : request.body[key];
+  if (Array.isArray(changes.sizes) && changes.sizes.length) { changes.price = Math.min(...changes.sizes.map(entry => entry.price)); changes.promotionalPrice = null; }
   await product.update(changes);
   await syncCatalogInventory();
   response.json(product);

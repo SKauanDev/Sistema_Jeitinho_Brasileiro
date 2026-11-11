@@ -1,7 +1,8 @@
+import { unlockOrderSound } from "../services/order-sound";
 import { FormEvent, useState } from "react";
 import { ArrowLeft, Eye, EyeOff, LockKeyhole, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { login } from "../services/auth";
+import { adminHome, login } from "../services/auth";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -13,11 +14,12 @@ export function LoginPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    void unlockOrderSound();
     setError("");
     setLoading(true);
     try {
-      await login(username, password);
-      navigate("/admin");
+      const user = await login(username, password);
+      navigate(adminHome(user), { replace: true });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Falha no login.");
     } finally {
@@ -28,7 +30,7 @@ export function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-brand">
-        <img src="/images/borda-dourada.png" alt="Pizzaria Borda Dourada" />
+        <img src="/images/logo.png" alt="Pizzaria Jeitinho Brasileiro" />
       </section>
       <section className="login-panel">
         <form onSubmit={submit}>

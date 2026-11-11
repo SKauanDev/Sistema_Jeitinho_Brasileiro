@@ -127,7 +127,16 @@ body :is(input, select, textarea):disabled {
 .admin-sidebar nav a { min-height: 40px; }
 .login-panel input, .customer-login-card input { font-size: 16px; }
 .login-heading p { color: #665f58; line-height: 1.6; }
+.notification-sound { display: inline-flex; align-items: center; gap: 7px; }
+.notification-sound > span { font-size: 13px; white-space: nowrap; }
+.order-sound-banner { display: flex; align-items: center; gap: 12px; margin: 18px 30px 0; padding: 14px 16px; border: 1px solid #CA923970; border-radius: 10px; background: #fff8e9; color: #51402a; font-size: 14px; }
+.order-sound-banner > svg { flex-shrink: 0; width: 20px; }
+.order-sound-banner > span { flex: 1; }
+.order-sound-banner > button { padding: 10px 14px; border: 0; border-radius: 8px; background: var(--brand-red); color: #fff; font: inherit; font-weight: 600; }
+.user-role.kitchen { background: #CA92391a; color: var(--brand-red); }
 @media (max-width: 760px) {
+  .order-sound-banner { margin: 14px 16px 0; flex-wrap: wrap; }
+  .order-sound-banner > button { width: 100%; }
   .admin-shell :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), select, textarea) { font-size: 16px; }
   .login-panel { border-left: 0; border-top: 1px solid #CA923955; }
   .admin-sidebar.sidebar-open { background: var(--brand-black); }

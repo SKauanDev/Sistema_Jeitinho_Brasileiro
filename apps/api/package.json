@@ -29,7 +29,9 @@
     "db:migrate-pix-qr": "tsx src/database/migrate-pix-qr.ts",
     "db:migrate-card-payer": "tsx src/database/migrate-card-payer.ts",
     "db:migrate-order-ownership": "tsx src/database/migrate-order-ownership.ts",
-    "check:payments": "tsx src/diagnostics/check-payments.ts"
+    "check:payments": "tsx src/diagnostics/check-payments.ts",
+    "db:migrate-pizza-sizes": "tsx src/database/migrate-pizza-sizes.ts",
+    "db:migrate-kitchen-role": "tsx src/database/migrate-kitchen-role.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

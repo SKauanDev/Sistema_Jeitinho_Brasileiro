@@ -48,12 +48,12 @@ try {
     await Category.update({ position: 3 }, { where: { slug: "bebidas" }, transaction });
     for (const [position, item] of menu.entries()) {
       const categoryId = categoryIds.get(item.category)!;
-      const imageUrl = "image" in item ? `/images/pizza-menu.png#pizza=${item.image}` : "/images/pizza-hero.png";
+      const imageUrl = "image" in item ? `/images/pizza-menu.png#pizza=${item.image}` : "/images/logo.png";
       const values = { categoryId, name: item.name, description: item.description, price: item.price, promotionalPrice: null, imageUrl, pizzaSlots: item.pizzaSlots, position, featured: item.category === "Pizzas" || item.name === "Combo Família", active: true, trashedAt: null };
       const [product, created] = await Product.findOrCreate({ where: { categoryId, name: item.name }, defaults: values, transaction });
       if (!created) await product.update(values, { transaction });
     }
-    await StoreSetting.update({ storeName: "Pizzaria Borda Dourada", logoUrl: "/images/borda-dourada.png", coverUrl: "/images/pizza-hero.png" }, { where: {}, transaction });
+    await StoreSetting.update({ storeName: "Pizzaria Jeitinho Brasileiro", logoUrl: "/images/logo.png", coverUrl: "/images/logo.png" }, { where: {}, transaction });
     return { deactivatedCategories: oldAsianIds.length, deactivatedProducts: oldProductIds.length, registeredProducts: menu.length };
   });
   console.log(JSON.stringify({ backup, ...result }));

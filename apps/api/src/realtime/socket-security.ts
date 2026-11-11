@@ -6,7 +6,7 @@ import { CustomerAccount, Order, User } from "../database/models.js";
 export const ADMIN_ROOM = "admin:authenticated";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const phone = (value: unknown) => String(value ?? "").replace(/\D/g, "");
-export type SocketIdentity = { role: "ADMIN" | "OPERATOR" | "CUSTOMER" | "ORDER_TRACKING"; sub?: string; phone?: string; orderId?: string; exp: number };
+export type SocketIdentity = { role: "ADMIN" | "OPERATOR" | "KITCHEN" | "CUSTOMER" | "ORDER_TRACKING"; sub?: string; phone?: string; orderId?: string; exp: number };
 export const orderTrackingToken = (orderId: string) => jwt.sign({ role: "ORDER_TRACKING", orderId }, env.jwtSecret, { expiresIn: "7d", audience: "urfood-order-tracking" });
 
 export async function resolveIdentity(claims: JwtPayload): Promise<SocketIdentity | null> {
@@ -16,7 +16,7 @@ export async function resolveIdentity(claims: JwtPayload): Promise<SocketIdentit
     return { role: "ORDER_TRACKING", orderId: claims.orderId, exp: claims.exp };
   }
   if (typeof claims.sub !== "string") return null;
-  if (["ADMIN", "OPERATOR"].includes(claims.role)) {
+  if (["ADMIN", "OPERATOR", "KITCHEN"].includes(claims.role)) {
     const account = await User.findByPk(claims.sub);
     if (!account?.getDataValue("active") || account.getDataValue("role") !== claims.role) return null;
     return { role: claims.role, sub: claims.sub, exp: claims.exp };
@@ -30,6 +30,7 @@ export async function resolveIdentity(claims: JwtPayload): Promise<SocketIdentit
 }
 async function canWatch(identity: SocketIdentity, id: string) {
   if (identity.role === "ORDER_TRACKING") return identity.orderId === id;
+  if (identity.role === "KITCHEN") return false;
   const order = await Order.findByPk(id, { attributes: ["id", "customerAccountId"] });
   if (!order) return false;
   return identity.role !== "CUSTOMER" || order.getDataValue("customerAccountId") === identity.sub;
@@ -49,7 +50,7 @@ export function configureSocketSecurity(io: Server, dependencies = { resolveIden
   });
   io.on("connection", socket => {
     const identity = socket.data.identity as SocketIdentity;
-    if (["ADMIN", "OPERATOR"].includes(identity.role)) void socket.join(ADMIN_ROOM);
+    if (["ADMIN", "OPERATOR", "KITCHEN"].includes(identity.role)) void socket.join(ADMIN_ROOM);
     const timeout = setTimeout(() => socket.disconnect(true), Math.min(2147483647, Math.max(0, identity.exp * 1000 - Date.now())));
     timeout.unref(); socket.on("disconnect", () => clearTimeout(timeout));
     const revalidate = setInterval(() => {

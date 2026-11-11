@@ -23,6 +23,17 @@ return async function requireAuth(request: Request, response: Response, next: Ne
 }
 export const requireAuth = createRequireAuth();
 
+// Keep kitchen permissions scoped to the order board, including direct HTTP calls.
+export function requireAdminArea(request: Request, response: Response, next: NextFunction): void {
+  if (response.locals.user?.role === "KITCHEN") {
+    const read = request.method === "GET" && ["/orders", "/orders/store"].includes(request.path.replace(/\/$/, ""));
+    const update = request.method === "PATCH" && /^\/orders\/[0-9a-f-]+\/status\/?$/i.test(request.path);
+    if (read || update) { next(); return; }
+    response.status(403).json({ message: "O perfil Cozinha tem acesso somente aos pedidos." }); return;
+  }
+  requireAdmin(request, response, next);
+}
+
 export function requireAdmin(_request: Request, response: Response, next: NextFunction): void {
   const user = response.locals.user as { role?: string } | undefined;
   if (user?.role !== "ADMIN" && user?.role !== "OPERATOR") { response.status(403).json({ message: "Sem permissão para esta operação." }); return; }

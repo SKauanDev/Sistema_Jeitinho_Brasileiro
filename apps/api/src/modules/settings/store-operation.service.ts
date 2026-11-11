@@ -28,7 +28,7 @@ export async function getStoreSetting(transaction?: Transaction) {
   const [setting] = await StoreSetting.findOrCreate({
     where: {},
     defaults: {
-      storeName: "Pizzaria Borda Dourada",
+      storeName: "Pizzaria Jeitinho Brasileiro",
       isOpen: true,
       averagePreparationMinutes: 30,
     },
