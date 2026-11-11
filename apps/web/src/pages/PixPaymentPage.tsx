@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePaymentUpdates } from "../services/usePaymentUpdates";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   Clock3,
@@ -31,6 +32,8 @@ const money = (value: number) =>
 export function PixPaymentPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const initialRequest = useRef(true);
+  const redirected = useRef<string | null>(null);
   const [payment, setPayment] = useState<PixState | null>(null);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
@@ -38,14 +41,16 @@ export function PixPaymentPage() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const response = await fetch(`${API_URL}/payments/mercado-pago/orders/${id}`, { headers: orderRequestHeaders(id) });
+      const initial = initialRequest.current; initialRequest.current = false;
+      const response = await fetch(`${API_URL}/payments/mercado-pago/orders/${id}${initial ? "?initial=1" : ""}`, { headers: orderRequestHeaders(id) });
       const data = (await response.json()) as PixState;
       if (!response.ok)
         throw new Error(
           data.message ?? "Não foi possível consultar o pagamento.",
         );
       setPayment(data);
-      if (data.paymentStatus === "APPROVED" && data.orderStatus !== "CANCELED") {
+      if (data.paymentStatus === "APPROVED" && data.orderStatus !== "CANCELED" && redirected.current !== id) {
+        redirected.current = id;
         const history = JSON.parse(
           localStorage.getItem("urfood_orders") ?? "[]",
         ) as Array<{ id: string; createdAt: string }>;
@@ -59,7 +64,7 @@ export function PixPaymentPage() {
             ].slice(0, 20),
           ),
         );
-        setTimeout(() => navigate(`/status/${id}`, { replace: true }), 900);
+        setTimeout(() => navigate(`/status/${id}`, { replace: true }), 200);
       }
     } catch (reason) {
       setError(
@@ -69,9 +74,10 @@ export function PixPaymentPage() {
       );
     }
   }, [id, navigate]);
+  usePaymentUpdates(id, load);
   useEffect(() => {
     void load();
-    const poll = window.setInterval(() => void load(), 4000);
+    const poll = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 4000);
     const clock = window.setInterval(() => setNow(Date.now()), 1000);
     return () => {
       clearInterval(poll);

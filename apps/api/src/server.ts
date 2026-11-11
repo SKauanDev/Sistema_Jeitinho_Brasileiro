@@ -4,6 +4,7 @@ import express from "express";
 import path from "node:path";
 import { Server } from "socket.io";
 import { env } from "./config/env.js";
+import { allowedWebOrigins } from "./config/web-origins.js";
 import "./database/models.js";
 import { sequelize } from "./database/sequelize.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
@@ -40,7 +41,7 @@ app.disable("x-powered-by");
 app.set("trust proxy", "loopback");
 app.use(securityHeaders);
 const httpServer = http.createServer(app);
-const allowedSocketOrigins = new Set([new URL(env.webUrl).origin, ...(env.nodeEnv === "production" ? [] : ["http://localhost:5173", "http://127.0.0.1:5173"])]);
+const allowedSocketOrigins = new Set(allowedWebOrigins(env.webUrl, env.webAllowedOrigins, env.nodeEnv !== "production"));
 const io = new Server(httpServer, {
   cors: { origin: [...allowedSocketOrigins] },
   maxHttpBufferSize: 16384,
@@ -49,7 +50,7 @@ const io = new Server(httpServer, {
 configureSocketSecurity(io);
 app.set("io", io);
 
-app.use(cors({ origin: env.webUrl }));
+app.use(cors({ origin: [...allowedSocketOrigins] }));
 app.use(express.json({ limit: "7mb" }));
 app.use(
   "/uploads",

@@ -1,3 +1,4 @@
+import { warmPaymentStatus } from "./payment-refresh.js";
 import { Router } from "express";
 import type { Server } from "socket.io";
 import { env } from "../../config/env.js";
@@ -41,6 +42,12 @@ mercadoPagoRouter.get("/orders/:orderId", requireOrderAccess, async (request, re
   if (!order || order.getDataValue("paymentMethod") !== "PIX") {
     response.status(404).json({ message: "Cobrança PIX não encontrada." }); return;
   }
+  if (request.query.initial === "1" && order.getDataValue("pixCopyPaste")) {
+    await expireUnpaidOrder(order, request.app.get("io") as Server | undefined);
+    await order.reload();
+    void warmPaymentStatus(order, request.app.get("io") as Server | undefined);
+    response.json(publicPixState(order)); return;
+  }
   let qrCodeBase64: string | undefined;
   try {
     if (order.getDataValue("paymentStatus") === "PENDING") {
@@ -65,6 +72,12 @@ mercadoPagoRouter.get("/card/orders/:orderId", requireOrderAccess, async (reques
   const order = await Order.findByPk(String(request.params.orderId));
   if (!order || !["CREDIT_CARD", "DEBIT_CARD"].includes(String(order.getDataValue("paymentMethod")))) {
     response.status(404).json({ message: "Pagamento com cartão não encontrado." }); return;
+  }
+  if (request.query.initial === "1") {
+    await expireUnpaidOrder(order, request.app.get("io") as Server | undefined);
+    await order.reload();
+    void warmPaymentStatus(order, request.app.get("io") as Server | undefined);
+    response.json(publicCardState(order)); return;
   }
   try {
     await expireUnpaidOrder(order, request.app.get("io") as Server | undefined);

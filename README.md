@@ -118,7 +118,17 @@ EMAIL_FROM=Pizzaria Borda Dourada <contato@seu-dominio.com>
 
 Use aspas ao redor da senha no arquivo `.env`, especialmente se ela contiver `#`: sem aspas, esse caractere inicia um comentário e a senha pode ser lida incompleta.
 
-`WEB_URL` é a origem do frontend permitida no CORS e no Socket.IO. `API_PUBLIC_URL` é o endereço HTTPS público do backend, utilizado nas notificações de pagamento. Nenhum deles é o endereço do MySQL.
+`WEB_URL` é a origem principal do frontend permitida no CORS e no Socket.IO. Para permitir outros domínios, preencha `WEB_ALLOWED_ORIGINS` com origens separadas por vírgula. `API_PUBLIC_URL` é o endereço HTTPS público do backend, utilizado nas notificações de pagamento. Nenhum deles é o endereço do MySQL.
+
+Para usar o domínio próprio e manter o acesso pela Vercel, configure no servidor da API e reinicie o processo após publicar a versão que oferece essa lista:
+
+```dotenv
+WEB_URL=https://www.jeitinhobrasileiroap.com
+WEB_ALLOWED_ORIGINS=https://comandacom.vercel.app,https://jeitinhobrasileiroap.com
+API_PUBLIC_URL=https://apijb.nivel3ti.com.br
+```
+
+Cada origem deve usar o protocolo correto e não conter caminhos. A configuração do DNS e do certificado de cada domínio deve estar válida independentemente dessa autorização.
 
 ### Frontend
 

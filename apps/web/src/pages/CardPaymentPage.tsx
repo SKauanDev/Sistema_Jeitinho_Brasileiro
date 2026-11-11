@@ -1,3 +1,5 @@
+import { loadMercadoPagoSdk, paymentPublicKey } from "../services/payment-bootstrap";
+import { usePaymentUpdates } from "../services/usePaymentUpdates";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, CreditCard, LoaderCircle, LockKeyhole, ShieldCheck, XCircle } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -17,25 +19,11 @@ function rememberOrder(id: string) {
   localStorage.setItem("urfood_orders", JSON.stringify([{ id, createdAt: new Date().toISOString() }, ...history.filter(item => item.id !== id)].slice(0, 20)));
 }
 
-function loadMercadoPagoSdk(): Promise<void> {
-  if ((window as MercadoPagoWindow).MercadoPago) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    let script = document.querySelector<HTMLScriptElement>('script[data-mercado-pago-sdk="true"]');
-    if (!script) {
-      script = document.createElement("script");
-      script.src = "https://sdk.mercadopago.com/js/v2";
-      script.async = true;
-      script.dataset.mercadoPagoSdk = "true";
-      document.head.appendChild(script);
-    }
-    script.addEventListener("load", () => resolve(), { once: true });
-    script.addEventListener("error", () => reject(new Error("Não foi possível carregar o formulário seguro do Mercado Pago.")), { once: true });
-  });
-}
-
 export function CardPaymentPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const initialRequest = useRef(true);
+  const redirected = useRef<string | null>(null);
   const [order, setOrder] = useState<CardState | null>(null);
   const [publicKey, setPublicKey] = useState("");
   const [loading, setLoading] = useState(true);
@@ -48,24 +36,26 @@ export function CardPaymentPage() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const response = await fetch(`${API_URL}/payments/mercado-pago/card/orders/${id}`, { headers: orderRequestHeaders(id) });
+      const initial = initialRequest.current; initialRequest.current = false;
+      const response = await fetch(`${API_URL}/payments/mercado-pago/card/orders/${id}${initial ? "?initial=1" : ""}`, { headers: orderRequestHeaders(id) });
       const data = await response.json() as CardState;
       if (!response.ok) throw new Error(data.message ?? "Pagamento não encontrado.");
       setOrder(data);
-      if (data.paymentStatus === "APPROVED" && data.orderStatus !== "CANCELED") {
+      if (data.paymentStatus === "APPROVED" && data.orderStatus !== "CANCELED" && redirected.current !== id) {
+        redirected.current = id;
         rememberOrder(id);
-        setTimeout(() => navigate(`/status/${id}`, { replace: true }), 900);
+        setTimeout(() => navigate(`/status/${id}`, { replace: true }), 200);
       }
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível consultar o pagamento."); }
     finally { setLoading(false); }
   }, [id, navigate]);
 
+  usePaymentUpdates(id, load);
+
   useEffect(() => {
     void load();
-    void fetch(`${API_URL}/payments/mercado-pago/public-key`)
-      .then(response => response.json())
-      .then((data: { publicKey?: string }) => setPublicKey(data.publicKey ?? ""))
-      .catch(() => setPublicKey(""));
+    void paymentPublicKey().then(setPublicKey).catch(() => setPublicKey(""));
+    void loadMercadoPagoSdk().catch(() => undefined);
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 4000);
     const clock = window.setInterval(() => setNow(Date.now()), 1000);
     return () => { clearInterval(timer); clearInterval(clock); };

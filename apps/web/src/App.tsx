@@ -1,3 +1,4 @@
+import { PizzaFlavorPicker } from "./components/PizzaFlavorPicker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Beer, Bike, BottleWine, CakeSlice, Check, ChevronLeft, ChevronRight, Cigarette, Clock3, Coffee, CupSoda,
@@ -52,6 +53,7 @@ export default function App() {
   const [activePizzaHalf, setActivePizzaHalf] = useState<"left" | "right">("left");
   const [selectedSize, setSelectedSize] = useState<PizzaSize | undefined>();
   const [flavorNotice, setFlavorNotice] = useState("");
+  const [flavorPickerOpen, setFlavorPickerOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -157,6 +159,7 @@ export default function App() {
 
   function openProduct(product: Product) {
     setSelected(product);
+    setFlavorPickerOpen(false);
     setSelectedSize(undefined);
     setFlavorNotice("");
     setSelectedExtras([]);
@@ -184,6 +187,13 @@ export default function App() {
     setPizzaSelections((current) => current.map((selection, index) => index === activePizzaSlot ? { ...selection, ...update } : selection));
   }
 
+  function showFlavorChoices() {
+    if (!window.matchMedia("(max-width: 760px)").matches) return;
+    setFlavorNotice("");
+    if (selected?.sizes?.length && !selectedSize) { setFlavorNotice("Escolha o tamanho antes do sabor."); return; }
+    setFlavorPickerOpen(true);
+  }
+
   function choosePizzaFlavor(flavorId: string) {
     const selection = pizzaSelections[activePizzaSlot];
     if (!selection) return;
@@ -195,6 +205,7 @@ export default function App() {
     } else {
       updatePizzaSelection({ rightId: flavorId });
     }
+    setFlavorPickerOpen(false);
   }
 
   const availableFlavors = pizzaFlavors.filter(flavor => selectedSize ? flavor.sizes?.some(entry => entry.size === selectedSize) : !selected?.sizes?.length && (!selected || !isPizzaFlavor(selected) || !flavor.sizes?.length));
@@ -337,11 +348,12 @@ export default function App() {
                 <div className="pizza-stage"><div className={`pizza-choice ${activePizza.mode}`}>
                   <div className="pizza-texture pizza-texture-left"><FoodImage src={pizzaFlavors.find((flavor) => flavor.id === activePizza.leftId)?.image || selected.image} alt="" /></div>
                   {activePizza.mode === "half" && <div className="pizza-texture pizza-texture-right"><FoodImage src={pizzaFlavors.find((flavor) => flavor.id === activePizza.rightId)?.image || selected.image} alt="" /></div>}
-                  <button className={`pizza-half pizza-left ${activePizzaHalf === "left" ? "active" : ""}`} onClick={() => setActivePizzaHalf("left")}><span>{activePizza.mode === "whole" ? "Pizza inteira" : "1ª metade"}</span><strong>{flavorName(activePizza.leftId)}</strong></button>
-                  {activePizza.mode === "half" && <button className={`pizza-half pizza-right ${activePizzaHalf === "right" ? "active" : ""}`} onClick={() => setActivePizzaHalf("right")}><span>2ª metade</span><strong>{flavorName(activePizza.rightId)}</strong></button>}
+                  <button className={`pizza-half pizza-left ${activePizzaHalf === "left" ? "active" : ""}`} onClick={() => { setActivePizzaHalf("left"); showFlavorChoices(); }}><span>{activePizza.mode === "whole" ? "Pizza inteira" : "1ª metade"}</span><strong>{flavorName(activePizza.leftId)}</strong></button>
+                  {activePizza.mode === "half" && <button className={`pizza-half pizza-right ${activePizzaHalf === "right" ? "active" : ""}`} onClick={() => { setActivePizzaHalf("right"); showFlavorChoices(); }}><span>2ª metade</span><strong>{flavorName(activePizza.rightId)}</strong></button>}
                 </div>
                 </div>
                 <p className="pizza-selection-summary" aria-live="polite">{activePizza.mode === "whole" ? flavorName(activePizza.leftId) : `${flavorName(activePizza.leftId)} + ${flavorName(activePizza.rightId)}`}<small>Toque na pizza para escolher cada metade.</small></p>
+                <div className="mobile-flavor-selectors">{(activePizza.mode === "half" ? ["left", "right"] as const : ["left"] as const).map(half => <button type="button" key={half} disabled={!!selected.sizes?.length && !selectedSize} onClick={() => { setActivePizzaHalf(half); showFlavorChoices(); }}><span>{activePizza.mode === "whole" ? "Sabor da pizza" : half === "left" ? "1ª metade" : "2ª metade"}</span><strong>{flavorName(half === "left" ? activePizza.leftId : activePizza.rightId)}</strong><ChevronRight size={17} /></button>)}</div>
                 <p className="pizza-flavor-notice" role="status" aria-live="polite">{flavorNotice}</p>
                 {!!selected.sizes?.length && !selectedSize && <p className="pizza-size-hint">Escolha um tamanho para ver os sabores disponíveis.</p>}
                 <div className="pizza-flavors"><span>Selecione o sabor da {activePizza.mode === "whole" ? "pizza" : activePizzaHalf === "left" ? "1ª metade" : "2ª metade"}</span>{availableFlavors.map((flavor) => { const chosen = (activePizzaHalf === "right" && activePizza.mode === "half" ? activePizza.rightId : activePizza.leftId) === flavor.id; return <button key={flavor.id} className={chosen ? "chosen" : ""} aria-pressed={chosen} onClick={() => choosePizzaFlavor(flavor.id)}><FoodImage src={flavor.image} alt="" /><div><strong>{flavor.name}</strong><small>{flavor.description}</small>{selected && isPizzaFlavor(selected) && <small className="flavor-price">{money(productPrice(flavor, selectedSize))}</small>}</div>{chosen && <Check />}</button>; })}</div>
@@ -364,6 +376,13 @@ export default function App() {
           </article>
         </div>
       )}
+
+      {flavorPickerOpen && selected && activePizza && <PizzaFlavorPicker
+        title={activePizza.mode === "whole" ? "Escolha o sabor" : activePizzaHalf === "left" ? "Escolha a 1ª metade" : "Escolha a 2ª metade"}
+        flavors={availableFlavors.filter(flavor => activePizza.mode !== "half" || flavor.id !== (activePizzaHalf === "left" ? activePizza.rightId : activePizza.leftId))}
+        selectedId={activePizzaHalf === "right" && activePizza.mode === "half" ? activePizza.rightId : activePizza.leftId}
+        size={selectedSize} showPrices={isPizzaFlavor(selected)} notice={flavorNotice}
+        onChoose={choosePizzaFlavor} onClose={() => { setFlavorPickerOpen(false); setFlavorNotice(""); }} />}
 
       {cartOpen && <div className="overlay drawer-overlay" onMouseDown={(event) => event.target === event.currentTarget && setCartOpen(false)}>
         <aside className="cart-drawer">

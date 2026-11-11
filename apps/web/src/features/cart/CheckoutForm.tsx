@@ -1,3 +1,4 @@
+import { preloadPayment } from "../../services/payment-bootstrap";
 import { FormEvent, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, Bike, CircleHelp, LoaderCircle, MapPin, ShieldCheck, Store, X } from "lucide-react";
@@ -577,7 +578,7 @@ export function CheckoutForm({
             <button
               type="button"
               className={paymentMethod === value ? "active" : ""}
-              onClick={() => setPaymentMethod(value)}
+              onClick={() => { preloadPayment(value); setPaymentMethod(value); }}
               key={value}
             >
               {label}

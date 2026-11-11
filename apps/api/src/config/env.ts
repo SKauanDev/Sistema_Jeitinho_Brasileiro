@@ -15,6 +15,7 @@ export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: Number(process.env.PORT ?? 3333),
   webUrl: process.env.WEB_URL ?? "http://localhost:5173",
+  webAllowedOrigins: process.env.WEB_ALLOWED_ORIGINS ?? "",
   jwtSecret: required("JWT_SECRET"),
   mercadoPagoAccessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN ?? "",
   mercadoPagoPublicKey: process.env.MERCADO_PAGO_PUBLIC_KEY || process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || "",
