@@ -229,6 +229,23 @@ Na hospedagem do backend:
 5. Configure armazenamento persistente para `uploads` e libere o IP de saída do backend no MySQL remoto.
 6. Valide `/health`, login, cardápio, eventos e checkout pelo domínio publicado.
 
+### VPS com PM2
+
+O arquivo `ecosystem.config.cjs`, na raiz, inicia a API compilada como `jeitinho-api`, usando `apps/api` como diretório de trabalho. Ele mantém uma única instância em modo fork para não duplicar as tarefas periódicas e preservar o funcionamento do Socket.IO e dos uploads locais.
+
+Execute na raiz do projeto no VPS, com o PM2 instalado:
+
+```bash
+npm run build -w @urfood/api
+pm2 startOrRestart ecosystem.config.cjs --update-env
+pm2 save
+pm2 logs jeitinho-api --lines 100
+```
+
+Após atualizar o código, repita a compilação e o `startOrRestart`. As credenciais continuam no `.env` da raiz ou em `apps/api/.env`; não são colocadas no ecosystem. Variáveis definidas no ecosystem têm prioridade sobre o `.env`.
+
+A configuração fornecida usa `HOST=0.0.0.0`, `PORT=3333` e `TRUST_PROXY=loopback, 192.168.199.39`. A API lê essa lista de proxies confiáveis para identificar o IP do cliente atrás do proxy. Os domínios configurados são `https://www.jeitinhobrasileiroap.com` e `https://apijb.nivel3ti.com.br`; origens adicionais continuam em `WEB_ALLOWED_ORIGINS` no `.env`.
+
 Um frontend publicado não consegue acessar `localhost:3333` do seu computador. Se usar um túnel temporário, ele precisa permanecer online; o endereço deve estar coerente com a configuração da API e dos webhooks.
 
 ## Acesso da cozinha e alertas

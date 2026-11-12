@@ -40,7 +40,7 @@ import { apiErrorHandler, createRateLimit, securityHeaders } from "./shared/http
 
 const app = express();
 app.disable("x-powered-by");
-app.set("trust proxy", "loopback");
+app.set("trust proxy", env.trustProxy);
 app.use(securityHeaders);
 const httpServer = http.createServer(app);
 const allowedSocketOrigins = new Set(allowedWebOrigins(env.webUrl, env.webAllowedOrigins, env.nodeEnv !== "production"));
@@ -95,8 +95,8 @@ async function start(): Promise<void> {
   await sequelize.authenticate();
   await syncCatalogInventory();
   await expireUnpaidOrders(io);
-  httpServer.listen(env.port, () => {
-    console.log(`API UrFood disponível em http://localhost:${env.port}`);
+  httpServer.listen(env.port, env.host, () => {
+    console.log(`API UrFood disponível em http://${env.host}:${env.port}`);
   });
   let expiring = false;
   setInterval(() => {

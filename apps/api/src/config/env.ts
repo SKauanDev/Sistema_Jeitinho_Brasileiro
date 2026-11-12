@@ -13,7 +13,9 @@ function required(name: string, fallback?: string): string {
 
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
+  host: process.env.HOST?.trim() || "0.0.0.0",
   port: Number(process.env.PORT ?? 3333),
+  trustProxy: (process.env.TRUST_PROXY ?? "loopback").split(",").map(value => value.trim()).filter(Boolean),
   webUrl: process.env.WEB_URL ?? "http://localhost:5173",
   webAllowedOrigins: process.env.WEB_ALLOWED_ORIGINS ?? "",
   jwtSecret: required("JWT_SECRET"),
