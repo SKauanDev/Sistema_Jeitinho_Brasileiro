@@ -1,3 +1,5 @@
+import { useTableNavigation } from "./features/cart/useTableNavigation";
+import { ScanTableButton } from "./components/TableScanner";
 import { emptyPizzaRules, loadPizzaRules, PIZZA_STYLES, type PizzaStyle } from "./services/pizza-rules";
 import { TableCheckout, type TableContext } from "./features/cart/TableCheckout";
 import { PizzaFlavorPicker } from "./components/PizzaFlavorPicker";
@@ -49,8 +51,8 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
   const [notes, setNotes] = useState("");
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("");
-  const [mobileCategory, setMobileCategory] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Product | null>(null);
+  const [localMobileCategory, setLocalMobileCategory] = useState<string | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedExtras, setSelectedExtras] = useState<Extra[]>([]);
   const [pizzaSelections, setPizzaSelections] = useState<PizzaSelection[]>([]);
   const [activePizzaSlot, setActivePizzaSlot] = useState(0);
@@ -58,11 +60,11 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
   const [selectedSize, setSelectedSize] = useState<PizzaSize | undefined>();
   const [selectedStyle, setSelectedStyle] = useState<PizzaStyle | undefined>();
   const [flavorNotice, setFlavorNotice] = useState("");
-  const [flavorPickerOpen, setFlavorPickerOpen] = useState(false);
+  const [localFlavorPickerOpen, setLocalFlavorPickerOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [cartOpen, setCartOpen] = useState(false);
-  const [checkingOut, setCheckingOut] = useState(false);
+  const [localCartOpen, setLocalCartOpen] = useState(false);
+  const [localCheckingOut, setLocalCheckingOut] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(() => localStorage.getItem("urfood_customer_token") ? localStorage.getItem("urfood_current_order") : null);
   const [customerName, setCustomerName] = useState(() => { if (!localStorage.getItem("urfood_customer_token")) return ""; try { return (JSON.parse(localStorage.getItem("urfood_customer") ?? "null") as { name?: string } | null)?.name ?? ""; } catch { return ""; } });
@@ -75,6 +77,23 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
   const categoryScrollFrame = useRef<number | null>(null);
   const categoryScrollDirection = useRef(0);
   const pizzaFlavors = useMemo(() => products.filter(isPizzaFlavor), [products]);
+  const [tableOrderNotes, setTableOrderNotes] = useState("");
+  const [tableOrderSending, setTableOrderSending] = useState(false);
+  const flow = useTableNavigation();
+  const mobileCategory = table ? flow.category : localMobileCategory;
+  const selected = table ? products.find(product => product.id === flow.product) ?? null : selectedProduct;
+  const cartOpen = table ? flow.view !== null : localCartOpen;
+  const checkingOut = table ? flow.view === "checkout" && cart.length > 0 : localCheckingOut;
+  const flavorPickerOpen = table ? flow.flavors && !!selected : localFlavorPickerOpen;
+  function setMobileCategory(category: string | null) { if (table) flow.change({ category, product: null, flavors: false, view: null }); else setLocalMobileCategory(category); }
+  function setSelected(product: Product | null) { if (table) flow.change({ product: product?.id ?? null, flavors: false }); else setSelectedProduct(product); }
+  function setCartOpen(open: boolean) { if (table) flow.change({ view: open ? "cart" : null, product: null, flavors: false }); else setLocalCartOpen(open); }
+  function setCheckingOut(checkout: boolean) { if (table) flow.change({ view: checkout ? "checkout" : "cart" }); else setLocalCheckingOut(checkout); }
+  function setFlavorPickerOpen(open: boolean) { if (table) flow.change({ flavors: open }); else setLocalFlavorPickerOpen(open); }
+  function openCart() { if (table) flow.change({ view: "cart", product: null, flavors: false }); else { setLocalCheckingOut(false); setLocalCartOpen(true); } }
+
+  useEffect(() => { if (table && flow.category && categories.includes(flow.category)) setActiveCategory(flow.category); }, [table?.key, flow.category, categories]);
+
 
   function stopCategoryAutoScroll() {
     categoryScrollDirection.current = 0;
@@ -115,7 +134,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
       const [catalog, config] = await Promise.all([catalogApi.public(), loadPizzaRules()]);
       if (!active) return;
       const nextRevision = JSON.stringify(config);
-      if (revision && revision !== nextRevision) { setCheckingOut(false); setPricingNotice("Os preços foram atualizados. Confira os valores do carrinho antes de continuar."); }
+      if (revision && revision !== nextRevision) { if (table && new URLSearchParams(window.location.search).get("etapa") === "checkout") flow.change({ view: "cart" }); else if (!table) setLocalCheckingOut(false); setPricingNotice("Os preços foram atualizados. Confira os valores do carrinho antes de continuar."); }
       revision = nextRevision;
       setRules(config);
       const names = catalog.map((category) => category.name);
@@ -132,7 +151,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
         pizzaSlots: product.pizzaSlots || (/pizza|premium/i.test(category.name) ? 1 : undefined),
         extras: product.optionGroups?.flatMap((group) => group.options.filter((option) => option.active).map((option) => ({ id: option.id, name: option.name, price: Number(option.priceDelta) }))),
       }]; }));
-      setSelected(current => current ? mapped.find(product => product.id === current.id) ?? null : null);
+      setSelectedProduct(current => current ? mapped.find(product => product.id === current.id) ?? null : null);
       setCart(current => current.map(item => {
         const product = mapped.find(product => product.id === item.id);
         if (!product) return { ...item, unavailable: true };
@@ -199,9 +218,9 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
     return total + (item.price + extras) * item.quantity;
   }, 0);
 
-  function openProduct(product: Product) {
-    setSelected(product);
-    setFlavorPickerOpen(false);
+  function configureProduct(product: Product) {
+    setSelectedProduct(product);
+    setLocalFlavorPickerOpen(false);
     setSelectedSize(undefined);
     const styles = isPizzaFlavor(product) ? stylesForProduct(product, rules) : [];
     setSelectedStyle(styles.length === 1 ? styles[0]?.style : undefined);
@@ -213,6 +232,9 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
     setActivePizzaHalf("left");
     setQuantity(1);
   }
+
+  function openProduct(product: Product) { configureProduct(product); if (table) flow.change({ product: product.id, view: null, flavors: false }); }
+  useEffect(() => { if (table && selected && selectedProduct?.id !== selected.id) configureProduct(selected); }, [table?.key, selected?.id, selectedProduct?.id]);
 
   function toggleExtra(extra: Extra) {
     setSelectedExtras((current) => current.some((item) => item.id === extra.id)
@@ -240,7 +262,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
   }
 
   function addToCart() {
-    if (!selected || !canAddProduct) return;
+    if (!selected || !canAddProduct || tableOrderSending) return;
     setCart((current) => [...current, { ...selected, price: selectedUnitPrice, style: selectedStyle, size: selectedSize, quantity, selectedExtras, pizzaSelections, notes: notes.trim() }]);
     setSelected(null);
   }
@@ -324,6 +346,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
           <img src="/images/logo.png" alt="Pizzaria Jeitinho Brasileiro" />
         </a>
         <nav className={mobileMenuOpen ? "mobile-nav-open" : ""}>
+          {!table && !manual && <ScanTableButton />}
           <span className="minimum-order-badge" title="Pedido mínimo base; algumas regiões podem ter valor diferente"><Bike size={18} aria-hidden="true" /><span>Pedido mínimo: <strong>{money(minimumOrder)}</strong></span></span>
           <a href={currentOrderId ? `/status/${currentOrderId}` : "/meus-pedidos"} className="order-track-link"><Clock3 size={18} /> Acompanhar pedido{currentOrderId && <span className="order-live-dot" />}</a>
           <a href="/meus-pedidos"><ShoppingBag size={18} /> Meus pedidos</a>
@@ -355,6 +378,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
           <div className={`mobile-category-home ${mobileCategory ? "category-selected" : ""}`}>
             <div className="mobile-category-heading"><span>EXPLORE O CARDÁPIO</span><h2>O que deseja hoje?</h2></div>
             {!!coupons.length && <button className={`mobile-coupon-claim ${claimedCouponCode ? "claimed" : ""}`} onClick={() => setCouponPopupOpen(true)}><Tag /><span><strong>{claimedCouponCode ? "Cupom resgatado" : "Cupom disponível"}</strong><small>{claimedCouponCode ? claimedCouponCode : "Toque para resgatar seu desconto"}</small></span></button>}
+            {!table && !manual && <ScanTableButton className="mobile-table-scan" />}
             <div className="mobile-category-grid">
               {categories.map((category) => {
                 const Icon = categoryIcon(category);
@@ -373,6 +397,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
               {categories.map((category) => (
                 <button key={category} className={category === activeCategory ? "active" : ""} onClick={(event) => {
                   setActiveCategory(category);
+                  if (table) setMobileCategory(category);
                   event.currentTarget.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
                 }}>
                   {category}
@@ -408,7 +433,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
         </section>
       </main>
 
-      <button className="cart-fab" onClick={() => { setCheckingOut(false); setCartOpen(true); }} aria-label="Abrir carrinho">
+      <button className="cart-fab" onClick={openCart} aria-label="Abrir carrinho">
         <ShoppingBag />{itemCount > 0 && <span>{itemCount}</span>}
       </button>
 
@@ -458,7 +483,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
               <label className="notes">Alguma observação?<textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Ex.: sem cebola, pizza bem assada..." maxLength={160} /></label>
               <div className="modal-action">
                 <div className="quantity"><button onClick={() => setQuantity(Math.max(1, quantity - 1))}><Minus /></button><strong>{quantity}</strong><button onClick={() => setQuantity(quantity + 1)}><Plus /></button></div>
-                <button className="add-button" disabled={!canAddProduct} onClick={addToCart}><span>{canAddProduct ? "Adicionar" : styledPizza && !selectedStyle ? "Escolha o estilo" : selected.sizes?.length && !selectedSize ? "Escolha o tamanho" : "Escolha os sabores"}</span>{Number.isFinite(modalTotal) && <strong>{money(modalTotal)}</strong>}</button>
+                <button className="add-button" disabled={!canAddProduct || tableOrderSending} onClick={addToCart}><span>{canAddProduct ? "Adicionar" : styledPizza && !selectedStyle ? "Escolha o estilo" : selected.sizes?.length && !selectedSize ? "Escolha o tamanho" : "Escolha os sabores"}</span>{Number.isFinite(modalTotal) && <strong>{money(modalTotal)}</strong>}</button>
               </div>
             </div>
           </article>
@@ -478,13 +503,13 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
           <div className="cart-body">
             {pricingNotice && <p className="checkout-operational-alert" role="status">{pricingNotice}</p>}
             {cart.some(item => item.unavailable) && <p className="checkout-error" role="alert">Uma pizza deixou de estar disponível nessa configuração. Remova-a e escolha novamente antes de continuar.</p>}
-            {checkingOut && table ? <TableCheckout table={table} subtotal={cartTotal} items={checkoutItems} onBack={() => setCheckingOut(false)} onComplete={() => { setCart([]); setCartOpen(false); setCheckingOut(false); onTableOrder?.(); }} /> : checkingOut ? <CheckoutForm manual={manual} subtotal={cartTotal} items={checkoutItems} initialCouponCode={claimedCouponCode} onBack={() => setCheckingOut(false)} onComplete={(orderId, paymentPath) => { if (manual) { setCart([]); onManualComplete?.(); return; } if (!paymentPath) { const history = JSON.parse(localStorage.getItem("urfood_orders") ?? "[]") as Array<{ id: string; createdAt: string }>; localStorage.setItem("urfood_current_order", orderId); localStorage.setItem("urfood_orders", JSON.stringify([{ id: orderId, createdAt: new Date().toISOString() }, ...history.filter((order) => order.id !== orderId)].slice(0, 20))); } if (claimedCouponCode) { const used = [...new Set([...usedCouponCodes, claimedCouponCode.toUpperCase()])]; localStorage.setItem("urfood_used_coupons", JSON.stringify(used)); setUsedCouponCodes(used); } localStorage.removeItem("urfood_claimed_coupon"); setClaimedCouponCode(""); setCart([]); window.location.href = paymentPath ? `/pagamento/${paymentPath}/${orderId}` : `/status/${orderId}`; }} /> : <>
+            {checkingOut && table ? <TableCheckout table={table} subtotal={cartTotal} items={checkoutItems} notes={tableOrderNotes} onNotesChange={setTableOrderNotes} loading={tableOrderSending} onLoadingChange={setTableOrderSending} onBack={() => setCheckingOut(false)} onComplete={() => { setCart([]); setTableOrderNotes(""); flow.change({ view: null, product: null, flavors: false }); onTableOrder?.(); }} /> : checkingOut ? <CheckoutForm manual={manual} subtotal={cartTotal} items={checkoutItems} initialCouponCode={claimedCouponCode} onBack={() => setCheckingOut(false)} onComplete={(orderId, paymentPath) => { if (manual) { setCart([]); onManualComplete?.(); return; } if (!paymentPath) { const history = JSON.parse(localStorage.getItem("urfood_orders") ?? "[]") as Array<{ id: string; createdAt: string }>; localStorage.setItem("urfood_current_order", orderId); localStorage.setItem("urfood_orders", JSON.stringify([{ id: orderId, createdAt: new Date().toISOString() }, ...history.filter((order) => order.id !== orderId)].slice(0, 20))); } if (claimedCouponCode) { const used = [...new Set([...usedCouponCodes, claimedCouponCode.toUpperCase()])]; localStorage.setItem("urfood_used_coupons", JSON.stringify(used)); setUsedCouponCodes(used); } localStorage.removeItem("urfood_claimed_coupon"); setClaimedCouponCode(""); setCart([]); window.location.href = paymentPath ? `/pagamento/${paymentPath}/${orderId}` : `/status/${orderId}`; }} /> : <>
             {cart.length === 0 ? <div className="empty-cart"><ShoppingBag /><h3>Seu carrinho está vazio</h3><p>Escolha algo delicioso no cardápio.</p></div> : cart.map((item, index) => (
-              <div className="cart-line" key={`${item.id}-${index}`}><FoodImage src={item.image} alt="" /><div><h3>{item.quantity}x {item.name}{item.size ? ` (${item.size})` : ""}</h3>{item.style && <small className="cart-pizza-style">{PIZZA_STYLES[item.style]}{item.pizzaSelections.some(pizza => pizza.borderId) ? " + borda recheada" : ""}</small>}<p>{item.pizzaSelections.length ? item.pizzaSelections.map((pizza, pizzaIndex) => `Pizza ${pizzaIndex + 1}: ${flavorName(pizza.leftId)}${pizza.mode === "half" ? ` / ${flavorName(pizza.rightId)}` : ""}`).join(" · ") : item.selectedExtras.map((extra) => extra.name).join(", ") || "Sem adicionais"}</p><strong>{money((item.price + item.selectedExtras.reduce((sum, extra) => sum + extra.price, 0)) * item.quantity)}</strong></div><button onClick={() => setCart((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={17} /></button></div>
+              <div className="cart-line" key={`${item.id}-${index}`}><FoodImage src={item.image} alt="" /><div><h3>{item.quantity}x {item.name}{item.size ? ` (${item.size})` : ""}</h3>{item.style && <small className="cart-pizza-style">{PIZZA_STYLES[item.style]}{item.pizzaSelections.some(pizza => pizza.borderId) ? " + borda recheada" : ""}</small>}<p>{item.pizzaSelections.length ? item.pizzaSelections.map((pizza, pizzaIndex) => `Pizza ${pizzaIndex + 1}: ${flavorName(pizza.leftId)}${pizza.mode === "half" ? ` / ${flavorName(pizza.rightId)}` : ""}`).join(" · ") : item.selectedExtras.map((extra) => extra.name).join(", ") || "Sem adicionais"}</p><strong>{money((item.price + item.selectedExtras.reduce((sum, extra) => sum + extra.price, 0)) * item.quantity)}</strong></div><button disabled={tableOrderSending} onClick={() => setCart((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={17} /></button></div>
             ))}
             </>}
           </div>
-          {!checkingOut && cart.length > 0 && <footer><div><span>Subtotal</span><strong>{money(cartTotal)}</strong></div><button disabled={cart.some(item => item.unavailable)} onClick={() => { setPricingNotice(""); setCheckingOut(true); }}>Continuar pedido <ChevronRight /></button></footer>}
+          {!checkingOut && cart.length > 0 && <footer><div><span>Subtotal</span><strong>{money(cartTotal)}</strong></div><button disabled={tableOrderSending || cart.some(item => item.unavailable)} onClick={() => { setPricingNotice(""); setCheckingOut(true); }}>Continuar pedido <ChevronRight /></button></footer>}
         </aside>
       </div>}
     </div>

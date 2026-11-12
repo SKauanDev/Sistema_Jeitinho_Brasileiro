@@ -309,6 +309,12 @@ Em **Mesas e comandas**, o padrão é 40 mesas. Ajuste a quantidade para ocultar
 
 O cliente escaneia, abre a comanda e envia pedidos com observações diretamente à cozinha. O consumo não exige nome, telefone ou endereço e não recebe taxa de entrega ou taxa digital. Novos pedidos entram na central com os mesmos alertas de som. A equipe confere o consumo e registra a forma de recebimento ao fechar a conta; esse registro não dispara uma cobrança eletrônica. O sistema verifica se o consumo e a sessão ainda são os mesmos antes de fechar. A próxima abertura cria uma sessão nova. Pedidos de contas recebidas não podem ser cancelados pela central.
 
+O botão **Escanear** está no módulo de mesas, no cardápio público e na página da comanda. A entrada pública `/comanda` também permite abrir o leitor. Ele solicita a câmera traseira, lê o QR no próprio navegador e navega para a mesa na mesma aba. QR codes externos são recusados; links antigos dos domínios do restaurante são convertidos para a rota local. A câmera é liberada ao fechar o leitor, sair da tela ou colocar a página em segundo plano. Também é possível colar o link da mesa.
+
+A câmera precisa de permissão do navegador e de uma origem segura (HTTPS ou localhost), conforme a [documentação de getUserMedia](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia). A leitura usa [jsQR](https://github.com/cozmo/jsQR), carregado apenas quando o leitor é aberto.
+
+Categorias, montagem da pizza, sabores, carrinho e finalização da comanda participam do histórico da mesma página. O botão voltar do celular retorna uma etapa; avançar restaura a etapa seguinte. Itens e observações permanecem durante essa navegação. O link da mesa no admin também usa navegação interna, sem abrir outra aba.
+
 O cupom térmico usa o logo atual, identifica a mesa quando houver, tem espaços reduzidos e texto reforçado. O QR de acompanhamento foi removido do cupom; os QR codes de mesa são impressos separadamente.
 
 ## Mercado Pago

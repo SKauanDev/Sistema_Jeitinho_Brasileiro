@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { LoginPage } from "./pages/LoginPage";
 import { adminHome, getCurrentUser } from "./services/auth";
+import { TableScanner } from "./components/TableScanner";
 import "./styles.css";
 import "./admin.css";
 import "./pizza.css";
@@ -10,6 +11,7 @@ import "./theme.css";
 
 const App = lazy(() => import("./App"));
 const TableMenuPage = lazy(() => import("./pages/TableMenuPage").then(module => ({ default: module.TableMenuPage })));
+const TableScanPage = lazy(() => import("./pages/TableScanPage").then(module => ({ default: module.TableScanPage })));
 const TablesModule = lazy(() => import("./features/admin/TablesModule").then(module => ({ default: module.TablesModule })));
 const AdminPage = lazy(() => import("./pages/AdminPage").then(module => ({ default: module.AdminPage })));
 const OrderStatusPage = lazy(() => import("./pages/OrderStatusPage").then(module => ({ default: module.OrderStatusPage })));
@@ -49,6 +51,7 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="/cardapio" element={<App />} />
         <Route path="/mesa/:key" element={<TableMenuPage />} />
+        <Route path="/comanda" element={<TableScanPage />} />
         <Route path="/status/:id" element={<OrderStatusPage />} />
         <Route path="/pagamento/pix/:id" element={<PixPaymentPage />} />
         <Route path="/pagamento/cartao/:id" element={<CardPaymentPage />} />
@@ -72,6 +75,7 @@ createRoot(document.getElementById("root")!).render(
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <TableScanner />
       </Suspense>
     </BrowserRouter>
   </StrictMode>,
