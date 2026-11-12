@@ -1,6 +1,6 @@
 import { API_URL } from "./admin-api";
 import type { InventoryCategory, InventoryData, InventoryItem, InventoryMovement } from "../types/inventory";
-async function request<T>(path: string, init?: RequestInit): Promise<T> { const response = await fetch(`${API_URL}${path}`, { ...init, headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("urfood_token")}`, ...init?.headers } }); const data = await response.json() as T & { message?: string }; if (!response.ok) throw new Error(data.message ?? "Falha ao consultar o estoque."); return data; }
+async function request<T>(path: string, init?: RequestInit): Promise<T> { const response = await fetch(`${API_URL}${path}`, { ...init, headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("urfood_token")}`, ...init?.headers } }); if (response.status === 204) return undefined as T; const data = await response.json() as T & { message?: string }; if (!response.ok) throw new Error(data.message ?? "Falha ao consultar o estoque."); return data; }
 export const inventoryApi = {
   createCategory: (name: string) => request<InventoryCategory>("/admin/inventory/categories", { method: "POST", body: JSON.stringify({ name }) }),
   removeItem: (id: string) => request<void>(`/admin/inventory/items/${id}`, { method: "DELETE" }),

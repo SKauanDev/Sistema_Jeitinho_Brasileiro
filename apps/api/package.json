@@ -33,16 +33,18 @@
     "db:migrate-pizza-sizes": "tsx src/database/migrate-pizza-sizes.ts",
     "db:migrate-kitchen-role": "tsx src/database/migrate-kitchen-role.ts",
     "db:migrate-dining": "tsx src/database/migrate-dining.ts",
-    "db:configure-pizza-styles": "tsx src/database/configure-pizza-styles.ts"
+    "db:configure-pizza-styles": "tsx src/database/configure-pizza-styles.ts",
+    "db:migrate-inventory-removal": "tsx src/database/migrate-inventory-removal.ts"
   },
   "dependencies": {
-    "cors": "^2.8.5",
     "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.14.3",
     "sequelize": "^6.37.7",
+    "sharp": "0.35.5",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {

@@ -317,6 +317,30 @@ Categorias, montagem da pizza, sabores, carrinho e finalização da comanda part
 
 O cupom térmico usa o logo atual, identifica a mesa quando houver, tem espaços reduzidos e texto reforçado. O QR de acompanhamento foi removido do cupom; os QR codes de mesa são impressos separadamente.
 
+## Estoque e ordenação do catálogo
+
+Antes de iniciar a API atualizada em outro banco, execute a migração aditiva:
+
+```powershell
+npm run db:migrate-inventory-removal -w @urfood/api
+```
+
+A exclusão retira o item do estoque e impede que a sincronização do catálogo o recrie. O produto do cardápio permanece disponível; o histórico de movimentações é preservado para consulta e estornos de pedidos anteriores.
+
+No cardápio administrativo, clique no cabeçalho **Produto** para ordenar de A–Z; o próximo clique inverte para Z–A. A ordenação respeita a busca e a categoria selecionada.
+
+## Imagens do cardápio
+
+Fotos do banco são entregues em WebP nos tamanhos adequados para miniaturas e detalhes, sem recortar a imagem. As imagens existentes recebem versões otimizadas na consulta; não é necessário reenviá-las nem executar migração. O endereço original continua funcionando. Novos uploads são redimensionados para até 1200 px e comprimidos antes de salvar. O processamento usa [Sharp](https://sharp.pixelplumbing.com/api-resize/), com limite de concorrência e cache de memória limitado a 32 MB para as versões geradas.
+
+No frontend, imagens fora da área visível carregam sob demanda. A visualização do produto recebe prioridade, e banner e logo usam arquivos WebP menores. Para regenerar esses arquivos após substituir os originais locais:
+
+```powershell
+node --import tsx apps/api/src/diagnostics/optimize-web-images.ts
+```
+
+Ao publicar esta atualização, execute `npm ci` na raiz do VPS antes de compilar e reiniciar a API, para instalar o processador de imagens. Publique também o frontend atualizado na Vercel.
+
 ## Mercado Pago
 
 Configure no backend as credenciais da aplicação e a assinatura secreta do webhook. No painel Mercado Pago, utilize o endpoint:

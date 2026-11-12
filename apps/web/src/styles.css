@@ -216,7 +216,7 @@ button:disabled {
 .hero {
   height: 355px;
   position: relative;
-  background: url("/images/pizza-hero.png") center 53% / cover;
+  background: url("/images/pizza-hero.webp") center 53% / cover;
 }
 
 .hero-shade {

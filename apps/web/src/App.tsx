@@ -343,7 +343,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
     <div className={`app-shell ${manual ? "manual-catalog" : ""} ${table ? "table-catalog" : ""}`}>
       <header className="topbar">
         <a className="brand" href="#top" aria-label="Pizzaria Jeitinho Brasileiro">
-          <img src="/images/logo.png" alt="Pizzaria Jeitinho Brasileiro" />
+          <img src="/images/logo.webp" alt="Pizzaria Jeitinho Brasileiro" />
         </a>
         <nav className={mobileMenuOpen ? "mobile-nav-open" : ""}>
           {!table && !manual && <ScanTableButton />}
@@ -368,7 +368,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
         </section>
 
         <section className="store-seal" aria-label="Pizzaria Jeitinho Brasileiro">
-          <img src="/images/logo.png" alt="Logo Pizzaria Jeitinho Brasileiro" />
+          <img src="/images/logo.webp" alt="Logo Pizzaria Jeitinho Brasileiro" />
         </section>
 
         <section className="catalog" id="cardapio">
@@ -418,7 +418,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
             <div className="product-grid" key={activeCategory}>
               {visibleProducts.map((product) => (
                 <button className="product-card" key={product.id} onClick={() => openProduct(product)}>
-                  <div className="product-image"><FoodImage src={product.image} alt={product.name} />{product.popular && <span>Mais pedido</span>}</div>
+                  <div className="product-image"><FoodImage src={product.image} alt={product.name} sizes="(max-width: 760px) 35vw, 300px" />{product.popular && <span>Mais pedido</span>}</div>
                   <div className="product-copy">
                     <h3>{product.name}</h3>
                     <p>{product.description}</p>
@@ -443,7 +443,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
         <div className="overlay" onMouseDown={(event) => event.target === event.currentTarget && setSelected(null)}>
           <article className="product-modal">
             <button className="close" onClick={() => setSelected(null)} aria-label="Fechar"><X /></button>
-            <div className="modal-image"><FoodImage src={selected.image} alt={selected.name} /></div>
+            <div className="modal-image"><FoodImage src={selected.image} alt={selected.name} sizes="(max-width: 760px) 100vw, 600px" priority /></div>
             <div className="modal-content">
               {selected.popular && <span className="eyebrow"><Star size={14} /> FAVORITO DA CASA</span>}
               <h2>{selected.name}</h2>
@@ -457,8 +457,8 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
                 <div className="pizza-mode"><button className={activePizza.mode === "whole" ? "active" : ""} onClick={() => { updatePizzaSelection({ mode: "whole", rightId: undefined, borderId: undefined }); setActivePizzaHalf("left"); }}>Sabor inteiro</button><button className={activePizza.mode === "half" ? "active" : ""} onClick={() => { updatePizzaSelection({ mode: "half", borderId: undefined }); setActivePizzaHalf("left"); }}>Meio a meio</button></div>
                 {activePizza.mode === "half" && <p className="pizza-size-hint">O valor segue o tamanho e a combinação escolhida. Pizzas doces combinam apenas com doces.</p>}
                 <div className="pizza-stage"><div className={`pizza-choice ${activePizza.mode}`}>
-                  <div className="pizza-texture pizza-texture-left"><FoodImage src={pizzaFlavors.find((flavor) => flavor.id === activePizza.leftId)?.image || selected.image} alt="" /></div>
-                  {activePizza.mode === "half" && <div className="pizza-texture pizza-texture-right"><FoodImage src={pizzaFlavors.find((flavor) => flavor.id === activePizza.rightId)?.image || selected.image} alt="" /></div>}
+                  <div className="pizza-texture pizza-texture-left"><FoodImage src={pizzaFlavors.find((flavor) => flavor.id === activePizza.leftId)?.image || selected.image} alt="" sizes="320px" priority /></div>
+                  {activePizza.mode === "half" && <div className="pizza-texture pizza-texture-right"><FoodImage src={pizzaFlavors.find((flavor) => flavor.id === activePizza.rightId)?.image || selected.image} alt="" sizes="320px" priority /></div>}
                   <button className={`pizza-half pizza-left ${activePizzaHalf === "left" ? "active" : ""}`} onClick={() => { setActivePizzaHalf("left"); showFlavorChoices(); }}><span>{activePizza.mode === "whole" ? "Pizza inteira" : "1ª metade"}</span><strong>{flavorName(activePizza.leftId)}</strong></button>
                   {activePizza.mode === "half" && <button className={`pizza-half pizza-right ${activePizzaHalf === "right" ? "active" : ""}`} onClick={() => { setActivePizzaHalf("right"); showFlavorChoices(); }}><span>2ª metade</span><strong>{flavorName(activePizza.rightId)}</strong></button>}
                 </div>

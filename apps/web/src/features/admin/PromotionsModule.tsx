@@ -1,3 +1,4 @@
+import { FoodImage } from "../../components/FoodImage";
 import { FormEvent, useEffect, useState } from "react";
 import {
   AlertCircle,
@@ -221,7 +222,7 @@ export function PromotionsModule() {
             {data.products.map((product) => (
               <article key={product.id}>
                 {product.imageUrl ? (
-                  <img src={catalogImageUrl(product.imageUrl)} alt="" />
+                  <FoodImage src={catalogImageUrl(product.imageUrl)} alt="" />
                 ) : (
                   <i>
                     <ImageOff />

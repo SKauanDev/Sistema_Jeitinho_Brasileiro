@@ -13,7 +13,10 @@ const localPizzaImages: Record<string, string> = {
   "/images/combos/combo_familia_prime.jpeg": "/images/pizza-hero.png",
   "/images/combos/combo_pizza&refri1l.jpeg": "/images/pizza-hero.png",
 };
-export const catalogImageUrl = (imageUrl?: string) => imageUrl?.startsWith("/uploads/") || imageUrl?.startsWith("/catalog/images/") ? `${API_URL}${imageUrl}` : localPizzaImages[imageUrl ?? ""] ?? imageUrl ?? "";
+export const catalogImageUrl = (imageUrl?: string) => {
+  const resolved = imageUrl?.startsWith("/uploads/") || imageUrl?.startsWith("/catalog/images/") ? `${API_URL}${imageUrl}` : localPizzaImages[imageUrl ?? ""] ?? imageUrl ?? "";
+  return resolved === "/images/pizza-hero.png" ? "/images/pizza-hero.webp" : resolved;
+};
 
 async function request<T>(path: string, init?: RequestInit, authenticated = false): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, { ...init, headers: { "Content-Type": "application/json", ...(authenticated ? { Authorization: `Bearer ${localStorage.getItem("urfood_token")}` } : {}), ...init?.headers } });

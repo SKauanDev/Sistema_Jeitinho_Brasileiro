@@ -30,7 +30,7 @@ export function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-brand">
-        <img src="/images/logo.png" alt="Pizzaria Jeitinho Brasileiro" />
+        <img src="/images/logo.webp" alt="Pizzaria Jeitinho Brasileiro" />
       </section>
       <section className="login-panel">
         <form onSubmit={submit}>

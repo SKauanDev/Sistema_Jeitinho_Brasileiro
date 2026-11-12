@@ -17,6 +17,7 @@ import { createAsyncCache } from "../../shared/async-cache.js";
 import { applyCatalogPricing } from "./catalog-pricing.js";
 import { readPizzaRules } from "./pizza-rules.js";
 import { getStoreSetting } from "../settings/store-operation.service.js";
+import { createImageCache, imageWidths, optimizeProductImage } from "./image-optimization.js";
 
 export const catalogRouter = Router();
 const adminCatalogRouter = Router();
@@ -78,7 +79,27 @@ catalogRouter.get("/", async (_request, response) => {
   response.json(applyCatalogPricing(categories, readPizzaRules(settings.getDataValue("pizzaRules"))));
 });
 
+const cachedImage = createImageCache();
 catalogRouter.get("/images/:id", async (request, response) => {
+  if (!/^[0-9a-f-]{36}$/i.test(String(request.params.id))) {
+    response.status(404).end(); return;
+  }
+  const width = Number(request.query.w);
+  if (request.query.w !== undefined && !(imageWidths as readonly number[]).includes(width)) {
+    response.status(400).json({ message: "Tamanho de imagem inválido." }); return;
+  }
+  if (request.query.w !== undefined) {
+    const variant = await cachedImage(`${request.params.id}:${width}`, async () => {
+      const image = await ProductImage.findByPk(request.params.id);
+      if (!image) return null;
+      try { return await optimizeProductImage(image.getDataValue("data"), width); }
+      catch { return { data: image.getDataValue("data") as Buffer, mimeType: String(image.getDataValue("mimeType")) }; }
+    });
+    if (variant) {
+      response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      response.type(variant.mimeType).send(variant.data); return;
+    }
+  }
   const image = await ProductImage.findByPk(request.params.id);
   if (!image) {
     response.status(404).json({ message: "Imagem não encontrada." });
@@ -229,12 +250,18 @@ adminCatalogRouter.post("/upload", async (request, response) => {
     response.status(404).json({ message: "Categoria não encontrada." });
     return;
   }
+  let optimized;
+  try { optimized = await optimizeProductImage(buffer, 1200); }
+  catch {
+    response.status(400).json({ message: "Não foi possível processar a imagem. Envie outro arquivo." });
+    return;
+  }
   const image = await ProductImage.create({
     categoryId: categoryId || null,
     originalName,
-    mimeType,
-    size: buffer.length,
-    data: buffer,
+    mimeType: optimized.mimeType,
+    size: optimized.data.length,
+    data: optimized.data,
   });
   response
     .status(201)

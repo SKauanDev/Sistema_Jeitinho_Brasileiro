@@ -208,6 +208,7 @@ export const DeliveryZone = sequelize.define("DeliveryZone", { id, name:{type:Da
 
 export const InventoryItem = sequelize.define("InventoryItem", {
   id,
+  removedAt: DataTypes.DATE(3),
   productId: { type: DataTypes.UUID, unique: true },
   name: { type: DataTypes.STRING(160), allowNull: false },
   category: { type: DataTypes.STRING(120), allowNull: false, defaultValue: "Insumos" },

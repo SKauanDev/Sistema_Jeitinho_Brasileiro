@@ -34,8 +34,12 @@
 
 .hero {
   height: 400px;
-  background-image: url('/images/pizza-hero.png');
+  background-image: url('/images/pizza-hero.webp');
   background-position: center 58%;
+}
+
+@media (max-width: 760px) {
+  .hero { background-image: url('/images/pizza-hero-mobile.webp'); }
 }
 
 .hero-shade {
@@ -737,3 +741,5 @@ body .style-money-field>input:focus{outline:none;border:0;box-shadow:none}
 .table-order-summary>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px}.table-order-summary>div>small{grid-column:1/-1;color:#81705f;font-size:12px;line-height:1.5}
 .table-checkout{padding-bottom:calc(8px + env(safe-area-inset-bottom,0px))}.table-checkout .place-order{position:static;bottom:auto;box-shadow:none}
 .scan-table-button>span,.scan-table-button>svg{color:#fff}.scan-table-button>span{font:inherit;letter-spacing:normal}
+
+.catalog-product-head .catalog-name-sort{display:inline-flex;align-items:center;gap:7px;padding:4px 0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}.catalog-product-head .catalog-name-sort:hover{color:#6F0801}.catalog-name-sort svg{flex-shrink:0;color:#6F0801}.catalog-product-head .catalog-name-sort small{margin:0;padding:2px 5px;border-radius:4px;background:#6F080110;color:#6F0801;font-size:10px;font-weight:700}

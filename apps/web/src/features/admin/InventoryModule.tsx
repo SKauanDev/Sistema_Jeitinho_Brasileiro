@@ -68,6 +68,7 @@ const levelOf = (item: InventoryItem) =>
     : 100;
 
 export function InventoryModule() {
+  const [removingIds, setRemovingIds] = useState<string[]>([]);
   const [data, setData] = useState<InventoryData | null>(null);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [recentMovements, setRecentMovements] = useState<InventoryMovement[]>([]);
@@ -352,9 +353,13 @@ export function InventoryModule() {
                 <button
                   className="delete"
                   title="Excluir item"
+                  aria-label={`Excluir ${item.name}`}
+                  disabled={removingIds.includes(item.id)}
                   onClick={async () => {
                     if (!window.confirm(`Excluir ${item.name} do estoque?`))
                       return;
+                    setError("");
+                    setRemovingIds(current => [...current, item.id]);
                     try {
                       await inventoryApi.removeItem(item.id);
                       await load();
@@ -364,10 +369,12 @@ export function InventoryModule() {
                           ? reason.message
                           : "Falha ao excluir item.",
                       );
+                    } finally {
+                      setRemovingIds(current => current.filter(id => id !== item.id));
                     }
                   }}
                 >
-                  <Trash2 />
+                  {removingIds.includes(item.id) ? <LoaderCircle className="spinner" /> : <Trash2 />}
                 </button>
               </span>
             </div>

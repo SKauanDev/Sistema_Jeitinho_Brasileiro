@@ -16,7 +16,7 @@ inventoryRouter.get("/", async (_request, response) => {
   await syncCatalogInventory();
   const [items, categories] = await Promise.all([
     InventoryItem.findAll({
-      where: { active: true },
+      where: { active: true, removedAt: null },
       order: [["name", "ASC"]],
     }),
     InventoryCategory.findAll({
@@ -127,7 +127,7 @@ inventoryRouter.post("/items", async (request, response) => {
 });
 inventoryRouter.patch("/items/:id", async (request, response) => {
   const item = await InventoryItem.findByPk(request.params.id);
-  if (!item) {
+  if (!item || item.getDataValue("removedAt")) {
     response.status(404).json({ message: "Item não encontrado." });
     return;
   }
@@ -155,12 +155,16 @@ inventoryRouter.patch("/items/:id", async (request, response) => {
   response.json(item);
 });
 inventoryRouter.delete("/items/:id", async (request, response) => {
-  const item = await InventoryItem.findByPk(String(request.params.id));
-  if (!item) {
+  const removed = await sequelize.transaction(async transaction => {
+    const item = await InventoryItem.findByPk(String(request.params.id), { transaction, lock: transaction.LOCK.UPDATE });
+    if (!item || item.getDataValue("removedAt")) return false;
+    await item.update({ active: false, removedAt: new Date() }, { transaction });
+    return true;
+  });
+  if (!removed) {
     response.status(404).json({ message: "Item não encontrado." });
     return;
   }
-  await item.update({ active: false });
   response.status(204).send();
 });
 inventoryRouter.post("/items/:id/movements", async (request, response) => {
@@ -184,7 +188,7 @@ inventoryRouter.post("/items/:id/movements", async (request, response) => {
         transaction,
         lock: transaction.LOCK.UPDATE,
       });
-      if (!item || !item.getDataValue("active"))
+      if (!item || !item.getDataValue("active") || item.getDataValue("removedAt"))
         throw new Error("ITEM_NOT_FOUND");
       const previous = numeric(item.getDataValue("currentStock"));
       const resulting =

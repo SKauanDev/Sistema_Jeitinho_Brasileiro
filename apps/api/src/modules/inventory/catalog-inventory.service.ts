@@ -18,14 +18,18 @@ export async function syncCatalogInventory(transaction?: Transaction) {
     const categoryName = String((product.get("category") as any)?.name ?? "Cardápio");
     const linked = existing.find(item => String(item.getDataValue("productId") ?? "") === productId);
     if (linked) {
+      if (linked.getDataValue("removedAt")) continue;
       if (linked.getDataValue("name") !== product.getDataValue("name") || linked.getDataValue("category") !== categoryName || !linked.getDataValue("active")) {
-        await linked.update({ name: product.getDataValue("name"), category: categoryName, active: true }, { transaction });
+        await InventoryItem.update({ name: product.getDataValue("name"), category: categoryName, active: true }, { where: { id: linked.getDataValue("id"), removedAt: null }, transaction });
       }
       continue;
     }
     await InventoryCategory.findOrCreate({ where: { name: categoryName }, defaults: { name: categoryName, active: true }, transaction });
-    const match = existing.find(item => !used.has(String(item.getDataValue("id"))) && !item.getDataValue("productId") && normalized(item.getDataValue("name")) === normalized(product.getDataValue("name")));
-    if (match) { await match.update({ productId, category: categoryName, active: true }, { transaction }); used.add(String(match.getDataValue("id"))); }
+    const match = existing.find(item => !item.getDataValue("removedAt") && !used.has(String(item.getDataValue("id"))) && !item.getDataValue("productId") && normalized(item.getDataValue("name")) === normalized(product.getDataValue("name")));
+    if (match) {
+      const [updated] = await InventoryItem.update({ productId, category: categoryName, active: true }, { where: { id: match.getDataValue("id"), removedAt: null }, transaction });
+      if (updated) used.add(String(match.getDataValue("id")));
+    }
     else { const created = await InventoryItem.create({ productId, name: product.getDataValue("name"), category: categoryName, unit: "un", currentStock: 0, minimumStock: 0, unitCost: 0, active: true }, { transaction }); existing.push(created); used.add(String(created.getDataValue("id"))); }
   }
   const eligibleIds = new Set(eligible.map(product => String(product.getDataValue("id"))));
@@ -38,7 +42,7 @@ export async function syncCatalogInventory(transaction?: Transaction) {
 export async function validateOrderInventory(items: Array<{ productId?: unknown; quantity?: unknown }>, transaction: Transaction) {
   const locked = [];
   for (const [productId, requested] of groupedQuantities(items)) {
-    const inventory = await InventoryItem.findOne({ where: { productId, active: true }, transaction, lock: transaction.LOCK.UPDATE });
+    const inventory = await InventoryItem.findOne({ where: { productId, active: true, removedAt: null }, transaction, lock: transaction.LOCK.UPDATE });
     if (inventory) locked.push({ productId, requested, inventory });
   }
   for (const { productId, requested, inventory } of locked) {
@@ -53,7 +57,7 @@ export async function applyOrderInventory(orderId: string, outerTransaction?: Tr
     if (!order || order.getDataValue("inventoryProcessedAt") || order.getDataValue("status") === "CANCELED") return false;
     const items = await OrderItem.findAll({ where: { orderId }, transaction });
     for (const [productId, requested] of groupedQuantities(items.map(item => ({ productId: item.getDataValue("productId"), quantity: item.getDataValue("quantity") })))) {
-      const inventory = await InventoryItem.findOne({ where: { productId, active: true }, transaction, lock: transaction.LOCK.UPDATE }); if (!inventory) continue;
+      const inventory = await InventoryItem.findOne({ where: { productId, active: true, removedAt: null }, transaction, lock: transaction.LOCK.UPDATE }); if (!inventory) continue;
       const previous = number(inventory.getDataValue("currentStock"));
       assertAvailableStock(String(inventory.getDataValue("name")), previous, requested);
       const deducted = requested;

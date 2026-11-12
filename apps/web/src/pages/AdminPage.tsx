@@ -86,7 +86,7 @@ export function AdminPage() {
       <aside id="admin-sidebar" className={`admin-sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
         <header>
           <a href={adminHome()}>
-            <img src="/images/logo.png" alt="Pizzaria Jeitinho Brasileiro" />
+            <img src="/images/logo.webp" alt="Pizzaria Jeitinho Brasileiro" />
           </a>
           <button onClick={() => setSidebarOpen(false)} aria-label="Fechar menu">
             <X />
