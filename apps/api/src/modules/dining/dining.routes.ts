@@ -94,12 +94,6 @@ adminDiningRouter.get("/", async (_req, res) => {
   }
   res.json({ count, tables: await Promise.all(tables.map(async table => ({ id: table.getDataValue("id"), key: table.getDataValue("accessKey"), ...await summary(table, bySession.get(String(table.getDataValue("sessionId"))) ?? []) }))) });
 });
-adminDiningRouter.post("/:id/access", async (req, res) => {
-  const table = await DiningTable.findByPk(String(req.params.id));
-  if (!table || Number(table.getDataValue("number")) > Number((await getStoreSetting()).getDataValue("tableCount"))) { res.status(404).json({ message: "Mesa indisponível." }); return; }
-  res.setHeader("Cache-Control", "no-store");
-  res.json({ accessToken: issueDiningAccess(table.getDataValue("accessKey"), table.getDataValue("sessionId") ?? null) });
-});
 adminDiningRouter.put("/count", async (req, res) => {
   const count = req.body.count;
   if (!Number.isInteger(count) || count < 1 || count > 300) { res.status(400).json({ message: "Informe de 1 a 300 mesas." }); return; }
