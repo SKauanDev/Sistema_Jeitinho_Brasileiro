@@ -1,5 +1,4 @@
 import { useTableNavigation } from "./features/cart/useTableNavigation";
-import { ScanTableButton } from "./components/TableScanner";
 import { emptyPizzaRules, loadPizzaRules, PIZZA_STYLES, type PizzaStyle } from "./services/pizza-rules";
 import { TableCheckout, type TableContext } from "./features/cart/TableCheckout";
 import { PizzaFlavorPicker } from "./components/PizzaFlavorPicker";
@@ -347,7 +346,6 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
           <img src="/images/logo.webp" alt="Pizzaria Jeitinho Brasileiro" />
         </a>
         <nav className={mobileMenuOpen ? "mobile-nav-open" : ""}>
-          {!table && !manual && <ScanTableButton />}
           <span className="minimum-order-badge" title="Pedido mínimo base; algumas regiões podem ter valor diferente"><Bike size={18} aria-hidden="true" /><span>Pedido mínimo: <strong>{money(minimumOrder)}</strong></span></span>
           <a href={currentOrderId ? `/status/${currentOrderId}` : "/meus-pedidos"} className="order-track-link"><Clock3 size={18} /> Acompanhar pedido{currentOrderId && <span className="order-live-dot" />}</a>
           <a href="/meus-pedidos"><ShoppingBag size={18} /> Meus pedidos</a>
@@ -379,7 +377,6 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
           <div className={`mobile-category-home ${mobileCategory ? "category-selected" : ""}`}>
             <div className="mobile-category-heading"><span>EXPLORE O CARDÁPIO</span><h2>O que deseja hoje?</h2></div>
             {!!coupons.length && <button className={`mobile-coupon-claim ${claimedCouponCode ? "claimed" : ""}`} onClick={() => setCouponPopupOpen(true)}><Tag /><span><strong>{claimedCouponCode ? "Cupom resgatado" : "Cupom disponível"}</strong><small>{claimedCouponCode ? claimedCouponCode : "Toque para resgatar seu desconto"}</small></span></button>}
-            {!table && !manual && <ScanTableButton className="mobile-table-scan" />}
             <div className="mobile-category-grid">
               {categories.map((category) => {
                 const Icon = categoryIcon(category);
