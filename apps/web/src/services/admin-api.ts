@@ -6,7 +6,7 @@ export const SOCKET_URL = import.meta.env.VITE_API_URL ? new URL(import.meta.env
 
 const pendingReads = new Map<string, Promise<unknown>>();
 
-function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
+export function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const isRead = !init?.method || init.method.toUpperCase() === "GET";
   // Share simultaneous reads, not cached results; tokens isolate authenticated users.
   if (!isRead) { pendingReads.clear(); return performAuthFetch<T>(path, init); }

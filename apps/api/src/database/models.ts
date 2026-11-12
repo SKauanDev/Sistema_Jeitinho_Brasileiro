@@ -101,6 +101,8 @@ export const ProductOptionGroup = sequelize.define("ProductOptionGroup", {
 
 export const Order = sequelize.define("Order", {
   id,
+  diningSessionId: DataTypes.UUID,
+  tableNumber: DataTypes.INTEGER.UNSIGNED,
   customerAccountId: DataTypes.UUID,
   displayNumber: { type: DataTypes.BIGINT.UNSIGNED, allowNull: false, autoIncrement: true, unique: true },
   status: {
@@ -126,7 +128,7 @@ export const Order = sequelize.define("Order", {
   deliveryFee: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
   digitalSecurityFee: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
   total: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
-  paymentMethod: { type: DataTypes.ENUM("PIX", "CASH", "CREDIT_CARD", "DEBIT_CARD", "ONLINE"), allowNull: true },
+  paymentMethod: { type: DataTypes.ENUM("PIX", "CASH", "CREDIT_CARD", "DEBIT_CARD", "ONLINE", "RECEIVED_ONLINE"), allowNull: true },
   paymentStatus: { type: DataTypes.ENUM("NOT_REQUIRED", "PENDING", "APPROVED", "REJECTED", "EXPIRED"), allowNull: false, defaultValue: "NOT_REQUIRED" },
   paymentProvider: DataTypes.STRING(40),
   paymentExternalId: { type: DataTypes.STRING(100), unique: true },
@@ -177,6 +179,8 @@ export const OrderStatusHistory = sequelize.define("OrderStatusHistory", {
 
 export const StoreSetting = sequelize.define("StoreSetting", {
   id,
+  pizzaRules: DataTypes.JSON,
+  tableCount: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 40 },
   storeName: { type: DataTypes.STRING(160), allowNull: false, defaultValue: "Pizzaria Jeitinho Brasileiro" },
   isOpen: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   averagePreparationMinutes: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 30 },
@@ -186,6 +190,20 @@ export const StoreSetting = sequelize.define("StoreSetting", {
   pixEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }, cashEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }, cardOnDeliveryEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }, onlinePaymentEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false }, pixKey: DataTypes.STRING(255),
 }, { tableName: "store_settings" });
 export const StoreHour = sequelize.define("StoreHour", { id, storeSettingId:{type:DataTypes.UUID,allowNull:false}, dayOfWeek:{type:DataTypes.INTEGER.UNSIGNED,allowNull:false}, isClosed:{type:DataTypes.BOOLEAN,allowNull:false,defaultValue:false}, opensAt:DataTypes.TIME, closesAt:DataTypes.TIME },{tableName:"store_hours"});
+export const DiningTable = sequelize.define("DiningTable", {
+  id,
+  number: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, unique: true },
+  accessKey: { type: DataTypes.STRING(64), allowNull: false, unique: true },
+  sessionId: DataTypes.UUID,
+}, { tableName: "dining_tables" });
+export const DiningSession = sequelize.define("DiningSession", {
+  id,
+  tableId: { type: DataTypes.UUID, allowNull: false },
+  closedAt: DataTypes.DATE,
+  notes: DataTypes.STRING(500),
+  total: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
+  paymentMethod: DataTypes.STRING(40),
+}, { tableName: "dining_sessions" });
 export const DeliveryZone = sequelize.define("DeliveryZone", { id, name:{type:DataTypes.STRING(120),allowNull:false}, fee:{type:DataTypes.DECIMAL(10,2),allowNull:false,defaultValue:0}, estimatedMinutesMin:{type:DataTypes.INTEGER.UNSIGNED,allowNull:false,defaultValue:30}, estimatedMinutesMax:{type:DataTypes.INTEGER.UNSIGNED,allowNull:false,defaultValue:45}, minimumOrder:{type:DataTypes.DECIMAL(10,2),allowNull:false,defaultValue:0}, active:{type:DataTypes.BOOLEAN,allowNull:false,defaultValue:true} },{tableName:"delivery_zones"});
 
 export const InventoryItem = sequelize.define("InventoryItem", {
@@ -277,5 +295,5 @@ CustomerCoupon.belongsTo(Coupon, { foreignKey: "couponId", as: "coupon" });
 
 export const models = {
   User, CustomerAccount, CustomerCoupon, Category, Product, ProductImage, OptionGroup, Option, ProductOptionGroup,
-  Order, OrderItem, OrderItemOption, OrderStatusHistory, StoreSetting, StoreHour, DeliveryZone, InventoryCategory, InventoryItem, InventoryMovement, FinancialEntry, Coupon,
+  Order, OrderItem, OrderItemOption, OrderStatusHistory, StoreSetting, StoreHour, DiningTable, DiningSession, DeliveryZone, InventoryCategory, InventoryItem, InventoryMovement, FinancialEntry, Coupon,
 };

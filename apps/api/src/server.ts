@@ -9,6 +9,8 @@ import "./database/models.js";
 import { sequelize } from "./database/sequelize.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { orderRouter } from "./modules/orders/order.routes.js";
+import { pizzaRulesRouter } from "./modules/catalog/pizza-rules.js";
+import { diningRouter, adminDiningRouter } from "./modules/dining/dining.routes.js";
 import { adminRouter } from "./modules/admin/admin.routes.js";
 import {
   adminCatalogRouter,
@@ -62,16 +64,22 @@ app.use(
 app.get("/health", (_request, response) => response.json({ status: "ok" }));
 const loginLimit = createRateLimit(30, 15 * 60_000);
 app.use(["/auth/login", "/customers/login", "/customers/register", "/customers/reset-password"], loginLimit);
-app.post("/orders", createRateLimit(30, 10 * 60_000));
+const regularOrderLimit = createRateLimit(30, 10 * 60_000);
+// Tables share the restaurant Wi-Fi public IP; keep room for all tables ordering.
+const tableOrderLimit = createRateLimit(300, 10 * 60_000);
+app.post("/orders", (request, response, next) => (request.body?.table ? tableOrderLimit : regularOrderLimit)(request, response, next));
 app.post("/payments/mercado-pago/card/orders/:orderId", createRateLimit(10, 10 * 60_000));
 app.use("/auth", authRouter);
 app.use("/orders", orderRouter);
+app.use("/pizza-rules", pizzaRulesRouter);
+app.use("/tables", diningRouter);
 app.use("/catalog", catalogRouter);
 app.use("/coupons", publicPromotionRouter);
 app.use("/customers", publicCustomerRouter);
 app.use("/payments/mercado-pago", mercadoPagoRouter);
 app.use("/delivery", deliveryRouter);
 app.use("/admin", adminRouter);
+app.use("/admin/tables", adminDiningRouter);
 app.use("/admin/catalog", adminCatalogRouter);
 app.use("/admin/inventory", inventoryRouter);
 app.use("/admin/customers", customerRouter);

@@ -1,3 +1,5 @@
+import { emptyPizzaRules, loadPizzaRules, PIZZA_STYLES, type PizzaStyle } from "./services/pizza-rules";
+import { TableCheckout, type TableContext } from "./features/cart/TableCheckout";
 import { PizzaFlavorPicker } from "./components/PizzaFlavorPicker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -13,9 +15,9 @@ import type { PublicCoupon } from "./types/promotion";
 import { FoodImage } from "./components/FoodImage";
 import { orderRequestHeaders } from "./services/realtime";
 
-import { configuredPizzaPrice, flavorAlreadyChosen, isPizzaFlavor, productPrice, type PizzaSelection } from "./utils/pizza";
+import { configuredPizzaPrice, configuredBorderPrice, stylesForProduct, sizesForStyle, selectedPizzaMenu, pizzaBorderMenu, compatibleFlavors, pizzaKind, flavorAlreadyChosen, isPizzaFlavor, productPrice, type PizzaSelection } from "./utils/pizza";
 import type { PizzaSize } from "./types/catalog";
-type CartItem = Product & { size?: PizzaSize; quantity: number; selectedExtras: Extra[]; pizzaSelections: PizzaSelection[]; notes: string };
+type CartItem = Product & { style?: PizzaStyle; size?: PizzaSize; quantity: number; selectedExtras: Extra[]; pizzaSelections: PizzaSelection[]; notes: string; unavailable?: boolean };
 
 function categoryIcon(category: string) {
   const name = category.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -37,7 +39,9 @@ function categoryIcon(category: string) {
 
 const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export default function App() {
+export default function App({ manual = false, onManualComplete, table, onTableOrder }: { manual?: boolean; onManualComplete?: () => void; table?: TableContext; onTableOrder?: () => void } = {}) {
+  const [rules, setRules] = useState(emptyPizzaRules);
+  const [pricingNotice, setPricingNotice] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -52,6 +56,7 @@ export default function App() {
   const [activePizzaSlot, setActivePizzaSlot] = useState(0);
   const [activePizzaHalf, setActivePizzaHalf] = useState<"left" | "right">("left");
   const [selectedSize, setSelectedSize] = useState<PizzaSize | undefined>();
+  const [selectedStyle, setSelectedStyle] = useState<PizzaStyle | undefined>();
   const [flavorNotice, setFlavorNotice] = useState("");
   const [flavorPickerOpen, setFlavorPickerOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
@@ -101,17 +106,54 @@ export default function App() {
   }
 
   useEffect(() => {
-    void catalogApi.public().then((catalog) => {
+    let active = true, refreshing = false, refreshAgain = false, revision = "";
+    const refresh = async () => {
+      if (!active) return;
+      if (refreshing) { refreshAgain = true; return; }
+      refreshing = true;
+      try {
+      const [catalog, config] = await Promise.all([catalogApi.public(), loadPizzaRules()]);
+      if (!active) return;
+      const nextRevision = JSON.stringify(config);
+      if (revision && revision !== nextRevision) { setCheckingOut(false); setPricingNotice("Os preços foram atualizados. Confira os valores do carrinho antes de continuar."); }
+      revision = nextRevision;
+      setRules(config);
       const names = catalog.map((category) => category.name);
-      const mapped = catalog.flatMap((category) => category.products.map((product) => ({
+      const mapped = catalog.flatMap((category) => category.products.flatMap((product) => {
+        const common = pizzaKind(category.name) === "TRADITIONAL" && /pizza/i.test(category.name);
+        const stylePrices = /pizza|premium/i.test(category.name) && !/combo/i.test(category.name) ? config.menus?.filter(menu => menu.kind === pizzaKind(category.name)).flatMap(menu => menu.sizes) ?? [] : [];
+        const sizes = (product.sizes ?? []).filter(entry => !common || !config.traditional.length || config.traditional.some(row => row.size === entry.size)).map(entry => ({ ...entry, price: common ? config.traditional.find(row => row.size === entry.size)?.price ?? entry.price : entry.price }));
+        if (config.menus?.length && /pizza|premium/i.test(category.name) && !/combo/i.test(category.name) && !stylePrices.length) return [];
+        if (!config.menus?.length && product.sizes?.length && !sizes.length) return [];
+        return [{
         id: product.id, category: category.name, name: product.name, description: product.description ?? "",
-        price: product.sizes?.length ? Math.min(...product.sizes.map(entry => entry.price)) : Number(product.promotionalPrice ?? product.price), image: catalogImageUrl(product.imageUrl), popular: product.featured,
-        sizes: product.sizes ?? [],
-        pizzaSlots: product.pizzaSlots || (/pizza/i.test(category.name) ? 1 : undefined),
+        price: stylePrices.length ? Math.min(...stylePrices.map(entry => entry.price)) : sizes.length ? Math.min(...sizes.map(entry => entry.price)) : Number(product.promotionalPrice ?? product.price), image: catalogImageUrl(product.imageUrl), popular: product.featured,
+        sizes: stylePrices.length ? (["P", "M", "G", "GG"] as const).flatMap(size => { const prices = stylePrices.filter(entry => entry.size === size).map(entry => entry.price); return prices.length ? [{ size, price: Math.min(...prices) }] : []; }) : sizes,
+        pizzaSlots: product.pizzaSlots || (/pizza|premium/i.test(category.name) ? 1 : undefined),
         extras: product.optionGroups?.flatMap((group) => group.options.filter((option) => option.active).map((option) => ({ id: option.id, name: option.name, price: Number(option.priceDelta) }))),
-      })));
+      }]; }));
+      setSelected(current => current ? mapped.find(product => product.id === current.id) ?? null : null);
+      setCart(current => current.map(item => {
+        const product = mapped.find(product => product.id === item.id);
+        if (!product) return { ...item, unavailable: true };
+        const price = configuredPizzaPrice(product, item.size, item.pizzaSelections, mapped.filter(isPizzaFlavor), config, item.style) + configuredBorderPrice(product, item.pizzaSelections, mapped.filter(isPizzaFlavor), config, item.style);
+        return { ...item, ...product, price: Number.isFinite(price) ? price : item.price, unavailable: !Number.isFinite(price) };
+      }));
       setCategories(names); setProducts(mapped); setActiveCategory((current) => current && names.includes(current) ? current : names[0] ?? "");
-    }).catch((reason) => setCatalogError(reason instanceof Error ? reason.message : "Não foi possível carregar o cardápio.")).finally(() => setCatalogLoading(false));
+      setCatalogError("");
+      } catch (reason) { if (active && !revision) setCatalogError(reason instanceof Error ? reason.message : "Não foi possível carregar o cardápio."); }
+      finally { refreshing = false; if (active) { setCatalogLoading(false); if (refreshAgain) { refreshAgain = false; void refresh(); } } }
+    };
+    const visibleRefresh = () => { if (document.visibilityState === "visible") void refresh(); };
+    const changedPrices = () => { void refresh(); };
+    const storageChanged = (event: StorageEvent) => { if (event.key === "urfood_pizza_prices_revision") void refresh(); };
+    void refresh();
+    window.addEventListener("focus", visibleRefresh);
+    document.addEventListener("visibilitychange", visibleRefresh);
+    window.addEventListener("urfood:pizza-prices-updated", changedPrices);
+    window.addEventListener("storage", storageChanged);
+    const timer = window.setInterval(visibleRefresh, 30_000);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener("focus", visibleRefresh); document.removeEventListener("visibilitychange", visibleRefresh); window.removeEventListener("urfood:pizza-prices-updated", changedPrices); window.removeEventListener("storage", storageChanged); };
   }, []);
 
   useEffect(() => { void catalogApi.publicCoupons().then(setCoupons).catch(() => setCoupons([])); }, []);
@@ -161,6 +203,8 @@ export default function App() {
     setSelected(product);
     setFlavorPickerOpen(false);
     setSelectedSize(undefined);
+    const styles = isPizzaFlavor(product) ? stylesForProduct(product, rules) : [];
+    setSelectedStyle(styles.length === 1 ? styles[0]?.style : undefined);
     setFlavorNotice("");
     setSelectedExtras([]);
     setPizzaSelections(Array.from({ length: product.pizzaSlots ?? 0 }, () => ({ mode: "whole", leftId: isPizzaFlavor(product) ? product.id : undefined })));
@@ -176,9 +220,28 @@ export default function App() {
       : [...current, extra]);
   }
 
+  function changePizzaStyle(style: PizzaStyle) {
+    setSelectedStyle(style);
+    setSelectedSize(undefined);
+    setFlavorNotice("");
+    setFlavorPickerOpen(false);
+    setPizzaSelections(current => current.map(pizza => ({ ...pizza, borderId: undefined })));
+  }
+  function changePizzaSize(size: PizzaSize) {
+    setSelectedSize(size);
+    setFlavorNotice("");
+    setPizzaSelections(current => current.map(pizza => {
+      const supportsSize = (id?: string) => {
+        const flavor = pizzaFlavors.find(flavor => flavor.id === id);
+        return flavor && (selected && isPizzaFlavor(selected) && rules.menus?.length ? sizesForStyle(flavor, rules, selectedStyle) : flavor.sizes ?? []).some(entry => entry.size === size);
+      };
+      return { ...pizza, leftId: supportsSize(pizza.leftId) ? pizza.leftId : undefined, rightId: supportsSize(pizza.rightId) ? pizza.rightId : undefined };
+    }));
+  }
+
   function addToCart() {
     if (!selected || !canAddProduct) return;
-    setCart((current) => [...current, { ...selected, price: selectedUnitPrice, size: selectedSize, quantity, selectedExtras, pizzaSelections, notes: notes.trim() }]);
+    setCart((current) => [...current, { ...selected, price: selectedUnitPrice, style: selectedStyle, size: selectedSize, quantity, selectedExtras, pizzaSelections, notes: notes.trim() }]);
     setSelected(null);
   }
 
@@ -190,6 +253,7 @@ export default function App() {
   function showFlavorChoices() {
     if (!window.matchMedia("(max-width: 760px)").matches) return;
     setFlavorNotice("");
+    if (selected && rules.menus?.length && isPizzaFlavor(selected) && !selectedStyle) { setFlavorNotice("Escolha o estilo da massa primeiro."); return; }
     if (selected?.sizes?.length && !selectedSize) { setFlavorNotice("Escolha o tamanho antes do sabor."); return; }
     setFlavorPickerOpen(true);
   }
@@ -197,7 +261,16 @@ export default function App() {
   function choosePizzaFlavor(flavorId: string) {
     const selection = pizzaSelections[activePizzaSlot];
     if (!selection) return;
+    const flavor = pizzaFlavors.find(row => row.id === flavorId);
+    const otherId = activePizzaHalf === "left" ? selection.rightId : selection.leftId;
+    const other = pizzaFlavors.find(row => row.id === otherId);
+    if (!flavor || (selected && isPizzaFlavor(selected) && !compatibleFlavors(selected, flavor)) || (selection.mode === "half" && other && !compatibleFlavors(other, flavor))) { setFlavorNotice("Pizza doce combina apenas com doce."); return; }
     if (flavorAlreadyChosen(selection, flavorId)) { setFlavorNotice("Esse sabor já foi escolhido"); return; }
+    if (selected && rules.menus?.length && isPizzaFlavor(selected)) {
+      const next = { ...selection, ...(selection.mode === "whole" || activePizzaHalf === "left" ? { leftId: flavorId } : { rightId: flavorId }) };
+      const menu = pizzaBorderMenu(selectedPizzaMenu(selected, [next], pizzaFlavors, rules, selectedStyle), rules);
+      if (next.borderId && (menu?.borderMode !== "PAID" || menu.borderPrice === null || !menu.borderIds.includes(next.borderId))) updatePizzaSelection({ borderId: undefined });
+    }
     setFlavorNotice("");
     if (selection.mode === "whole" || activePizzaHalf === "left") {
       updatePizzaSelection({ leftId: flavorId });
@@ -208,16 +281,28 @@ export default function App() {
     setFlavorPickerOpen(false);
   }
 
-  const availableFlavors = pizzaFlavors.filter(flavor => selectedSize ? flavor.sizes?.some(entry => entry.size === selectedSize) : !selected?.sizes?.length && (!selected || !isPizzaFlavor(selected) || !flavor.sizes?.length));
-  const selectedUnitPrice = selected ? configuredPizzaPrice(selected, selectedSize, pizzaSelections, pizzaFlavors) : 0;
+  const styledPizza = !!selected && !!rules.menus?.length && isPizzaFlavor(selected);
+  const selectedSizes = selected ? sizesForStyle(selected, rules, selectedStyle) : [];
+  const selectedStyles = selected ? stylesForProduct(selected, rules) : [];
+  const availableFlavors = pizzaFlavors.filter(flavor => (!selected || !isPizzaFlavor(selected) || compatibleFlavors(selected, flavor)) && (styledPizza ? !!selectedStyle && !!selectedSize && sizesForStyle(flavor, rules, selectedStyle).some(entry => entry.size === selectedSize) : selectedSize ? flavor.sizes?.some(entry => entry.size === selectedSize) : !selected?.sizes?.length && (!selected || !isPizzaFlavor(selected) || !flavor.sizes?.length))).filter(flavor => { const selection = pizzaSelections[activePizzaSlot]; const other = pizzaFlavors.find(row => row.id === (activePizzaHalf === "left" ? selection?.rightId : selection?.leftId)); return selection?.mode !== "half" || !other || compatibleFlavors(other, flavor); });
+  const selectedUnitPrice = selected ? configuredPizzaPrice(selected, selectedSize, pizzaSelections, pizzaFlavors, rules, selectedStyle) + configuredBorderPrice(selected, pizzaSelections, pizzaFlavors, rules, selectedStyle) : 0;
+  const borderMenu = selected && styledPizza ? pizzaBorderMenu(selectedPizzaMenu(selected, pizzaSelections, pizzaFlavors, rules, selectedStyle), rules) : undefined;
+  const availableBorders = rules.borders.filter(border => border.active && (styledPizza ? borderMenu?.borderMode === "PAID" && borderMenu.borderPrice !== null && borderMenu.borderIds.includes(border.id) : !rules.menus?.length || border.price > 0));
+  const borderPrice = (id: string) => styledPizza ? borderMenu?.borderPrice ?? 0 : rules.borders.find(border => border.id === id)?.price ?? 0;
   const modalTotal = selected
     ? (selectedUnitPrice + selectedExtras.reduce((sum, extra) => sum + extra.price, 0)) * quantity
     : 0;
-  const canAddProduct = !!selected && (!selected.sizes?.length || !!selectedSize) && (!selected.pizzaSlots || pizzaSelections.every(pizza => pizza.leftId && availableFlavors.some(flavor => flavor.id === pizza.leftId) && (pizza.mode === "whole" || (pizza.rightId && pizza.rightId !== pizza.leftId && availableFlavors.some(flavor => flavor.id === pizza.rightId)))));
+  const canAddProduct = !!selected && Number.isFinite(selectedUnitPrice) && (!styledPizza || !!selectedStyle) && (!selected.sizes?.length || !!selectedSize) && (!selected.pizzaSlots || pizzaSelections.every(pizza => {
+    const left = pizzaFlavors.find(flavor => flavor.id === pizza.leftId);
+    const right = pizzaFlavors.find(flavor => flavor.id === pizza.rightId);
+    const sizeAvailable = (flavor: Product) => styledPizza ? sizesForStyle(flavor, rules, selectedStyle).some(entry => entry.size === selectedSize) : selectedSize ? flavor.sizes?.some(entry => entry.size === selectedSize) : !selected.sizes?.length;
+    return left && sizeAvailable(left) && (!isPizzaFlavor(selected) || compatibleFlavors(selected, left)) && (pizza.mode === "whole" || (right && right.id !== left.id && sizeAvailable(right) && compatibleFlavors(left, right)));
+  }));
   const activePizza = pizzaSelections[activePizzaSlot];
   const flavorName = (id?: string) => pizzaFlavors.find((flavor) => flavor.id === id)?.name ?? "Escolher";
   const checkoutItems = cart.map((item) => ({
     productId: item.id,
+    style: item.style,
     size: item.size,
     pizzaSelections: item.pizzaSelections,
     productName: item.name,
@@ -233,7 +318,7 @@ export default function App() {
     ],
   }));
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${manual ? "manual-catalog" : ""} ${table ? "table-catalog" : ""}`}>
       <header className="topbar">
         <a className="brand" href="#top" aria-label="Pizzaria Jeitinho Brasileiro">
           <img src="/images/logo.png" alt="Pizzaria Jeitinho Brasileiro" />
@@ -338,13 +423,14 @@ export default function App() {
               {selected.popular && <span className="eyebrow"><Star size={14} /> FAVORITO DA CASA</span>}
               <h2>{selected.name}</h2>
               <p className="modal-description">{selected.description}</p>
-              <strong className="modal-price">{money(selectedUnitPrice)}</strong>
-              {!!selected.sizes?.length && <fieldset className="pizza-size-picker"><legend>Escolha o tamanho</legend><div>{selected.sizes.map(entry => <label key={entry.size} className={selectedSize === entry.size ? "selected" : ""}><input type="radio" name="pizza-size" value={entry.size} checked={selectedSize === entry.size} onChange={() => { setSelectedSize(entry.size); setFlavorNotice(""); setPizzaSelections(current => current.map(pizza => ({ ...pizza, leftId: pizzaFlavors.find(flavor => flavor.id === pizza.leftId)?.sizes?.some(size => size.size === entry.size) ? pizza.leftId : undefined, rightId: pizzaFlavors.find(flavor => flavor.id === pizza.rightId)?.sizes?.some(size => size.size === entry.size) ? pizza.rightId : undefined }))); }} /><span><b>{entry.size}</b><small>{money(entry.price)}</small></span></label>)}</div></fieldset>}
+              <strong className="modal-price">{Number.isFinite(selectedUnitPrice) ? money(selectedUnitPrice) : selectedSize ? "Combinação indisponível" : `A partir de ${money(selectedSizes.length ? Math.min(...selectedSizes.map(entry => entry.price)) : selected.price)}`}</strong>
+              {styledPizza && <fieldset className="pizza-style-picker"><legend>Escolha o estilo da massa</legend><div>{selectedStyles.map(menu => <label key={menu.style} className={selectedStyle === menu.style ? "selected" : ""}><input type="radio" name="pizza-style" value={menu.style} checked={selectedStyle === menu.style} onChange={() => changePizzaStyle(menu.style)} /><span><b>{PIZZA_STYLES[menu.style]}</b><small>A partir de {money(Math.min(...menu.sizes.map(entry => entry.price)))}</small></span></label>)}</div></fieldset>}
+              {!!selectedSizes.length && <fieldset className="pizza-size-picker"><legend>Escolha o tamanho</legend><div>{selectedSizes.map(entry => <label key={entry.size} className={selectedSize === entry.size ? "selected" : ""}><input type="radio" name="pizza-size" value={entry.size} checked={selectedSize === entry.size} onChange={() => changePizzaSize(entry.size)} /><span><b>{entry.size}</b><small>{money(entry.price)}</small></span></label>)}</div></fieldset>}
               {!!selected.pizzaSlots && activePizza && <section className="pizza-customizer">
                 <header><div><h3>Monte {selected.pizzaSlots > 1 ? "suas pizzas" : "sua pizza"}</h3><span>Uma inteira ou duas metades. Você escolhe.</span></div><b>Obrigatório</b></header>
                 {selected.pizzaSlots > 1 && <div className="pizza-slot-tabs">{pizzaSelections.map((_, index) => <button key={index} className={activePizzaSlot === index ? "active" : ""} onClick={() => { setActivePizzaSlot(index); setActivePizzaHalf("left"); }}>Pizza {index + 1}</button>)}</div>}
-                <div className="pizza-mode"><button className={activePizza.mode === "whole" ? "active" : ""} onClick={() => { updatePizzaSelection({ mode: "whole", rightId: undefined }); setActivePizzaHalf("left"); }}>Sabor inteiro</button><button className={activePizza.mode === "half" ? "active" : ""} onClick={() => { updatePizzaSelection({ mode: "half" }); setActivePizzaHalf("left"); }}>Meio a meio</button></div>
-                {activePizza.mode === "half" && <p className="pizza-size-hint">No meio a meio, vale o maior preço entre os sabores.</p>}
+                <div className="pizza-mode"><button className={activePizza.mode === "whole" ? "active" : ""} onClick={() => { updatePizzaSelection({ mode: "whole", rightId: undefined, borderId: undefined }); setActivePizzaHalf("left"); }}>Sabor inteiro</button><button className={activePizza.mode === "half" ? "active" : ""} onClick={() => { updatePizzaSelection({ mode: "half", borderId: undefined }); setActivePizzaHalf("left"); }}>Meio a meio</button></div>
+                {activePizza.mode === "half" && <p className="pizza-size-hint">O valor segue o tamanho e a combinação escolhida. Pizzas doces combinam apenas com doces.</p>}
                 <div className="pizza-stage"><div className={`pizza-choice ${activePizza.mode}`}>
                   <div className="pizza-texture pizza-texture-left"><FoodImage src={pizzaFlavors.find((flavor) => flavor.id === activePizza.leftId)?.image || selected.image} alt="" /></div>
                   {activePizza.mode === "half" && <div className="pizza-texture pizza-texture-right"><FoodImage src={pizzaFlavors.find((flavor) => flavor.id === activePizza.rightId)?.image || selected.image} alt="" /></div>}
@@ -354,9 +440,11 @@ export default function App() {
                 </div>
                 <p className="pizza-selection-summary" aria-live="polite">{activePizza.mode === "whole" ? flavorName(activePizza.leftId) : `${flavorName(activePizza.leftId)} + ${flavorName(activePizza.rightId)}`}<small>Toque na pizza para escolher cada metade.</small></p>
                 <div className="mobile-flavor-selectors">{(activePizza.mode === "half" ? ["left", "right"] as const : ["left"] as const).map(half => <button type="button" key={half} disabled={!!selected.sizes?.length && !selectedSize} onClick={() => { setActivePizzaHalf(half); showFlavorChoices(); }}><span>{activePizza.mode === "whole" ? "Sabor da pizza" : half === "left" ? "1ª metade" : "2ª metade"}</span><strong>{flavorName(half === "left" ? activePizza.leftId : activePizza.rightId)}</strong><ChevronRight size={17} /></button>)}</div>
+                {!!availableBorders.length && <fieldset className="pizza-border-picker"><legend>Borda recheada · opcional</legend><select aria-label="Borda recheada" value={activePizza.borderId ?? ""} onChange={event => updatePizzaSelection({ borderId: event.target.value || undefined })}><option value="">Sem borda recheada</option>{(["SAVORY", "SWEET"] as const).map(type => <optgroup key={type} label={type === "SAVORY" ? "Salgadas" : "Doces"}>{availableBorders.filter(border => border.type === type).map(border => <option key={border.id} value={border.id}>{border.name} · + {money(borderPrice(border.id))}</option>)}</optgroup>)}</select></fieldset>}
+                {!Number.isFinite(selectedUnitPrice) && (!styledPizza || (selectedStyle && selectedSize)) && <p role="status">Esta combinação não está disponível neste estilo e tamanho.</p>}
                 <p className="pizza-flavor-notice" role="status" aria-live="polite">{flavorNotice}</p>
-                {!!selected.sizes?.length && !selectedSize && <p className="pizza-size-hint">Escolha um tamanho para ver os sabores disponíveis.</p>}
-                <div className="pizza-flavors"><span>Selecione o sabor da {activePizza.mode === "whole" ? "pizza" : activePizzaHalf === "left" ? "1ª metade" : "2ª metade"}</span>{availableFlavors.map((flavor) => { const chosen = (activePizzaHalf === "right" && activePizza.mode === "half" ? activePizza.rightId : activePizza.leftId) === flavor.id; return <button key={flavor.id} className={chosen ? "chosen" : ""} aria-pressed={chosen} onClick={() => choosePizzaFlavor(flavor.id)}><FoodImage src={flavor.image} alt="" /><div><strong>{flavor.name}</strong><small>{flavor.description}</small>{selected && isPizzaFlavor(selected) && <small className="flavor-price">{money(productPrice(flavor, selectedSize))}</small>}</div>{chosen && <Check />}</button>; })}</div>
+                {styledPizza && !selectedStyle ? <p className="pizza-size-hint">Escolha o estilo da massa e depois o tamanho.</p> : !!selected.sizes?.length && !selectedSize && <p className="pizza-size-hint">Escolha um tamanho para ver os sabores disponíveis.</p>}
+                <div className="pizza-flavors"><span>Selecione o sabor da {activePizza.mode === "whole" ? "pizza" : activePizzaHalf === "left" ? "1ª metade" : "2ª metade"}</span>{availableFlavors.map((flavor) => { const chosen = (activePizzaHalf === "right" && activePizza.mode === "half" ? activePizza.rightId : activePizza.leftId) === flavor.id; return <button key={flavor.id} className={chosen ? "chosen" : ""} aria-pressed={chosen} onClick={() => choosePizzaFlavor(flavor.id)}><FoodImage src={flavor.image} alt="" /><div><strong>{flavor.name}</strong><small>{flavor.description}</small>{styledPizza ? <small>{pizzaKind(flavor.category) === "PREMIUM" ? "Premium" : pizzaKind(flavor.category) === "SWEET" ? "Doce" : "Comum"}</small> : selected && isPizzaFlavor(selected) && <small className="flavor-price">{money(productPrice(flavor, selectedSize))}</small>}</div>{chosen && <Check />}</button>; })}</div>
               </section>}
               {!!selected.extras?.length && <div className="extras">
                 <div><h3>Deixe do seu jeito</h3><span>Escolha quantos quiser</span></div>
@@ -370,7 +458,7 @@ export default function App() {
               <label className="notes">Alguma observação?<textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Ex.: sem cebola, pizza bem assada..." maxLength={160} /></label>
               <div className="modal-action">
                 <div className="quantity"><button onClick={() => setQuantity(Math.max(1, quantity - 1))}><Minus /></button><strong>{quantity}</strong><button onClick={() => setQuantity(quantity + 1)}><Plus /></button></div>
-                <button className="add-button" disabled={!canAddProduct} onClick={addToCart}><span>{canAddProduct ? "Adicionar" : selected.sizes?.length && !selectedSize ? "Escolha o tamanho" : "Escolha os sabores"}</span><strong>{money(modalTotal)}</strong></button>
+                <button className="add-button" disabled={!canAddProduct} onClick={addToCart}><span>{canAddProduct ? "Adicionar" : styledPizza && !selectedStyle ? "Escolha o estilo" : selected.sizes?.length && !selectedSize ? "Escolha o tamanho" : "Escolha os sabores"}</span>{Number.isFinite(modalTotal) && <strong>{money(modalTotal)}</strong>}</button>
               </div>
             </div>
           </article>
@@ -381,20 +469,22 @@ export default function App() {
         title={activePizza.mode === "whole" ? "Escolha o sabor" : activePizzaHalf === "left" ? "Escolha a 1ª metade" : "Escolha a 2ª metade"}
         flavors={availableFlavors.filter(flavor => activePizza.mode !== "half" || flavor.id !== (activePizzaHalf === "left" ? activePizza.rightId : activePizza.leftId))}
         selectedId={activePizzaHalf === "right" && activePizza.mode === "half" ? activePizza.rightId : activePizza.leftId}
-        size={selectedSize} showPrices={isPizzaFlavor(selected)} notice={flavorNotice}
+        size={selectedSize} showPrices={isPizzaFlavor(selected) && !styledPizza} notice={flavorNotice}
         onChoose={choosePizzaFlavor} onClose={() => { setFlavorPickerOpen(false); setFlavorNotice(""); }} />}
 
       {cartOpen && <div className="overlay drawer-overlay" onMouseDown={(event) => event.target === event.currentTarget && setCartOpen(false)}>
         <aside className="cart-drawer">
-          <header><div><span>{checkingOut ? "ENTREGA" : "SEU PEDIDO"}</span><h2>{checkingOut ? "Finalizar pedido" : "Carrinho"}</h2></div><button className="close" onClick={() => setCartOpen(false)}><X /></button></header>
+          <header><div><span>{table ? `MESA ${table.number}` : manual ? "PEDIDO MANUAL" : checkingOut ? "ENTREGA" : "SEU PEDIDO"}</span><h2>{checkingOut ? "Finalizar pedido" : "Carrinho"}</h2></div><button className="close" onClick={() => setCartOpen(false)}><X /></button></header>
           <div className="cart-body">
-            {checkingOut ? <CheckoutForm subtotal={cartTotal} items={checkoutItems} initialCouponCode={claimedCouponCode} onBack={() => setCheckingOut(false)} onComplete={(orderId, paymentPath) => { if (!paymentPath) { const history = JSON.parse(localStorage.getItem("urfood_orders") ?? "[]") as Array<{ id: string; createdAt: string }>; localStorage.setItem("urfood_current_order", orderId); localStorage.setItem("urfood_orders", JSON.stringify([{ id: orderId, createdAt: new Date().toISOString() }, ...history.filter((order) => order.id !== orderId)].slice(0, 20))); } if (claimedCouponCode) { const used = [...new Set([...usedCouponCodes, claimedCouponCode.toUpperCase()])]; localStorage.setItem("urfood_used_coupons", JSON.stringify(used)); setUsedCouponCodes(used); } localStorage.removeItem("urfood_claimed_coupon"); setClaimedCouponCode(""); setCart([]); window.location.href = paymentPath ? `/pagamento/${paymentPath}/${orderId}` : `/status/${orderId}`; }} /> : <>
+            {pricingNotice && <p className="checkout-operational-alert" role="status">{pricingNotice}</p>}
+            {cart.some(item => item.unavailable) && <p className="checkout-error" role="alert">Uma pizza deixou de estar disponível nessa configuração. Remova-a e escolha novamente antes de continuar.</p>}
+            {checkingOut && table ? <TableCheckout table={table} subtotal={cartTotal} items={checkoutItems} onBack={() => setCheckingOut(false)} onComplete={() => { setCart([]); setCartOpen(false); setCheckingOut(false); onTableOrder?.(); }} /> : checkingOut ? <CheckoutForm manual={manual} subtotal={cartTotal} items={checkoutItems} initialCouponCode={claimedCouponCode} onBack={() => setCheckingOut(false)} onComplete={(orderId, paymentPath) => { if (manual) { setCart([]); onManualComplete?.(); return; } if (!paymentPath) { const history = JSON.parse(localStorage.getItem("urfood_orders") ?? "[]") as Array<{ id: string; createdAt: string }>; localStorage.setItem("urfood_current_order", orderId); localStorage.setItem("urfood_orders", JSON.stringify([{ id: orderId, createdAt: new Date().toISOString() }, ...history.filter((order) => order.id !== orderId)].slice(0, 20))); } if (claimedCouponCode) { const used = [...new Set([...usedCouponCodes, claimedCouponCode.toUpperCase()])]; localStorage.setItem("urfood_used_coupons", JSON.stringify(used)); setUsedCouponCodes(used); } localStorage.removeItem("urfood_claimed_coupon"); setClaimedCouponCode(""); setCart([]); window.location.href = paymentPath ? `/pagamento/${paymentPath}/${orderId}` : `/status/${orderId}`; }} /> : <>
             {cart.length === 0 ? <div className="empty-cart"><ShoppingBag /><h3>Seu carrinho está vazio</h3><p>Escolha algo delicioso no cardápio.</p></div> : cart.map((item, index) => (
-              <div className="cart-line" key={`${item.id}-${index}`}><FoodImage src={item.image} alt="" /><div><h3>{item.quantity}x {item.name}{item.size ? ` (${item.size})` : ""}</h3><p>{item.pizzaSelections.length ? item.pizzaSelections.map((pizza, pizzaIndex) => `Pizza ${pizzaIndex + 1}: ${flavorName(pizza.leftId)}${pizza.mode === "half" ? ` / ${flavorName(pizza.rightId)}` : ""}`).join(" · ") : item.selectedExtras.map((extra) => extra.name).join(", ") || "Sem adicionais"}</p><strong>{money((item.price + item.selectedExtras.reduce((sum, extra) => sum + extra.price, 0)) * item.quantity)}</strong></div><button onClick={() => setCart((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={17} /></button></div>
+              <div className="cart-line" key={`${item.id}-${index}`}><FoodImage src={item.image} alt="" /><div><h3>{item.quantity}x {item.name}{item.size ? ` (${item.size})` : ""}</h3>{item.style && <small className="cart-pizza-style">{PIZZA_STYLES[item.style]}{item.pizzaSelections.some(pizza => pizza.borderId) ? " + borda recheada" : ""}</small>}<p>{item.pizzaSelections.length ? item.pizzaSelections.map((pizza, pizzaIndex) => `Pizza ${pizzaIndex + 1}: ${flavorName(pizza.leftId)}${pizza.mode === "half" ? ` / ${flavorName(pizza.rightId)}` : ""}`).join(" · ") : item.selectedExtras.map((extra) => extra.name).join(", ") || "Sem adicionais"}</p><strong>{money((item.price + item.selectedExtras.reduce((sum, extra) => sum + extra.price, 0)) * item.quantity)}</strong></div><button onClick={() => setCart((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={17} /></button></div>
             ))}
             </>}
           </div>
-          {!checkingOut && cart.length > 0 && <footer><div><span>Subtotal</span><strong>{money(cartTotal)}</strong></div><button onClick={() => setCheckingOut(true)}>Continuar pedido <ChevronRight /></button></footer>}
+          {!checkingOut && cart.length > 0 && <footer><div><span>Subtotal</span><strong>{money(cartTotal)}</strong></div><button disabled={cart.some(item => item.unavailable)} onClick={() => { setPricingNotice(""); setCheckingOut(true); }}>Continuar pedido <ChevronRight /></button></footer>}
         </aside>
       </div>}
     </div>

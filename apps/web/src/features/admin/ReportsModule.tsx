@@ -28,6 +28,7 @@ const payment: Record<string, string> = {
   CREDIT_CARD: "Crédito",
   DEBIT_CARD: "Débito",
   ONLINE: "Cartão na entrega",
+  RECEIVED_ONLINE: "Pagamento online recebido",
 };
 const periodLabels: Record<string, string> = {
   today: "Hoje",

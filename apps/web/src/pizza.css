@@ -634,3 +634,84 @@
     transform: rotateX(22deg);
   }
 }
+
+/* Pedidos manuais, bordas e atendimento por mesa. */
+.refinement-dialog{width:min(720px,calc(100vw - 32px));max-height:88dvh;overflow:auto;border:1px solid #ded8ce;border-radius:20px;padding:24px;color:#131313;background:#fff;box-shadow:0 24px 80px #0003}
+.refinement-dialog::backdrop,.manual-order-dialog::backdrop{background:#13131399;backdrop-filter:blur(3px)}
+.refinement-dialog header,.manual-order-dialog>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}
+.refinement-dialog h2,.manual-order-dialog h2{margin:0 0 6px;font-size:23px}.refinement-dialog p,.manual-order-dialog>header p{margin:6px 0 14px;line-height:1.5}
+.refinement-dialog header button,.manual-order-dialog>header button{border:0;background:#f4f2ef;border-radius:50%;width:38px;height:38px;display:grid;place-items:center;flex-shrink:0;cursor:pointer}
+.refinement-dialog fieldset{border:1px solid #e5dfd7;border-radius:12px;margin:20px 0;padding:16px}.refinement-dialog legend{font-weight:750;padding:0 6px}
+.refinement-dialog label,.table-count-form label{display:flex;flex-direction:column;gap:8px;font-size:14px;font-weight:650}
+.refinement-dialog input,.refinement-dialog select,.refinement-dialog textarea,.table-count-form input{width:100%;min-height:44px;border:1px solid #d7d1c8;border-radius:8px;padding:10px 12px;font:inherit;background:#fff;color:#131313}
+.refinement-dialog textarea{min-height:85px;resize:vertical}.refinement-dialog small{font-size:12px;line-height:1.5;color:#59534c;display:block;margin-top:8px}
+.rule-sizes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}.border-rule{display:grid;grid-template-columns:minmax(120px,2fr) minmax(100px,1fr) minmax(80px,1fr) 34px;align-items:end;gap:10px;margin:16px 0}
+.refinement-dialog footer{display:flex;justify-content:flex-end;gap:12px;padding-top:18px;border-top:1px solid #eee;margin-top:20px}
+.refinement-dialog footer button:last-child,.table-welcome button,.table-count-form button,.module-title>button,.catalog-title-actions>button:first-child{border:0;background:#6F0801;color:#fff;padding:12px 18px;border-radius:9px;font:inherit;font-weight:650;cursor:pointer}
+.manual-order-dialog{width:min(1320px,calc(100vw - 32px));height:94dvh;max-height:94dvh;border:0;border-radius:20px;padding:0;background:#fff;overflow:auto;color:#131313}
+.manual-order-dialog>header{position:sticky;top:0;background:#fff;z-index:25;padding:18px 24px;margin:0;border-bottom:1px solid #e6e0d8}
+.manual-catalog .topbar,.manual-catalog .hero,.manual-catalog .site-footer,.manual-catalog .floating-cart~footer,.table-catalog .topbar,.table-catalog .hero,.table-catalog .site-footer{display:none}
+.manual-catalog .overlay{position:fixed;inset:0;z-index:40}.manual-catalog .drawer-overlay{z-index:45}
+.pizza-border-picker{border:1px solid #e4ddd2;border-radius:12px;margin:16px 0;padding:14px}.pizza-border-picker legend{font-weight:700;font-size:14px}.pizza-border-picker select{width:100%;padding:12px;border-radius:8px;background:#fff;border:1px solid #ddd4c8;color:#131313;font:inherit}
+.table-session-header{display:flex;gap:16px;align-items:center;padding:20px max(20px,calc((100vw - 1200px)/2));background:#131313;color:#fff}.table-session-header img{width:64px;height:64px;object-fit:contain;background:#fff;border-radius:50%}.table-session-header h1{font-size:24px;margin:0 0 6px}.table-session-header p{margin:0;font-size:14px;color:#f5e7ce;line-height:1.5}
+.table-welcome{max-width:480px;margin:56px auto;padding:24px;text-align:center;line-height:1.65}.table-welcome h2{font-size:26px}.table-welcome button{width:100%;margin-top:14px}.table-notice{padding:14px 20px;margin:12px 20px;border:1px solid #ca923955;border-radius:10px;background:#fff8ea;color:#6F0801}
+.table-count-form{padding:20px;display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:24px}.table-count-form label{max-width:180px}.table-count-form small{flex-basis:100%;color:#625b53}.tables-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:16px}
+.table-order{padding:16px 0;border-bottom:1px solid #e4ded5}.table-order small{display:block}.table-detail-dialog details{padding:12px 0}.table-detail-dialog form{margin-top:20px;display:grid;gap:16px}
+@media(max-width:760px){.manual-order-dialog{width:100%;max-width:100%;height:100dvh;max-height:100dvh;border-radius:0}.manual-order-dialog>header{padding:14px 16px}.manual-order-dialog h2{font-size:19px}.manual-catalog .product-modal{max-height:100dvh;height:100dvh}.refinement-dialog{padding:18px}.rule-sizes{gap:8px}.border-rule{grid-template-columns:1fr 1fr 34px}.border-rule>label:first-child{grid-column:1/-1}.table-session-header{padding:16px}.table-session-header h1{font-size:21px}.table-session-header img{width:52px;height:52px}.table-count-form{padding:16px}.tables-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.table-card{padding:16px}.table-count-form label{max-width:150px}}
+
+.manual-catalog .coupon-claim,.table-catalog .coupon-claim{display:none}
+
+.table-consumption{max-width:1160px;margin:16px auto;padding:16px 20px;border:1px solid #e3d9ca;border-radius:12px;background:#fffaf2}.table-consumption summary{font-weight:700;cursor:pointer}.table-consumption article{border-top:1px solid #e3d9ca;margin-top:16px;padding-top:16px}.table-consumption small{display:block;line-height:1.6}
+
+.manual-catalog .store-seal,.table-catalog .store-seal{display:none}
+.manual-catalog,.table-catalog{display:flow-root}
+.table-consumption{color:#131313}
+.manual-catalog .checkout-payment>div{grid-template-columns:repeat(2,minmax(0,1fr))}
+.manual-catalog .checkout-payment>div button{font-size:13px;min-height:46px;line-height:1.35;padding:10px}
+.manual-catalog .checkout-totals>div,.manual-catalog .checkout-back{font-size:13px}
+.manual-catalog .checkout-heading>span,.manual-catalog .fulfillment-options small{font-size:11px}
+
+/* Tabela de pizzas por categoria, estilo e tamanho. */
+.pizza-pricing-dialog{width:min(860px,calc(100vw - 32px))}
+.pricing-tabs{display:flex;flex-wrap:wrap;gap:8px;padding:12px 0 18px;border-bottom:1px solid #e7dfd5;margin-bottom:22px;background:#fff}
+.pricing-tabs button{border:1px solid #ded5c8;border-radius:9px;padding:10px 14px;background:#fff;color:#54483d;font:inherit;font-size:13px;font-weight:650;cursor:pointer}
+.pricing-tabs button[aria-pressed="true"]{background:#6F0801;border-color:#6F0801;color:#fff}
+.pricing-category h3,.pricing-border-list h3{font-size:20px;margin:0 0 12px}
+.style-price-card{background:#fffdfa}.style-price-card legend{font-size:17px}
+.style-money-field{display:flex;align-items:center;min-width:0;border:1px solid #d7d1c8;border-radius:8px;background:#fff;transition:border-color .16s,box-shadow .16s}
+.style-money-field>span{font-size:12px;font-weight:600;color:#796c5d;padding-left:10px}
+.refinement-dialog .style-money-field>input{min-width:0;width:100%;border:0;background:transparent;padding:10px 6px;font-size:14px;font-weight:650;border-radius:8px;appearance:textfield;-moz-appearance:textfield}
+.style-money-field input::-webkit-inner-spin-button,.style-money-field input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.style-money-field:focus-within{border-color:#CA9239;box-shadow:0 0 0 3px #CA923926}
+body .style-money-field>input:focus{outline:none;border:0;box-shadow:none}
+.style-policy{padding:12px 14px;background:#f4efe7;border-radius:9px;font-size:13px;font-weight:600;color:#5e5043}
+.style-border-config{display:grid;gap:16px;border-top:1px solid #e6ddd0;margin-top:18px;padding-top:18px}.style-border-config>label:not(.style-border-toggle){max-width:230px}
+.refinement-dialog .style-border-toggle{display:flex;flex-direction:row;align-items:center;gap:10px}
+.refinement-dialog .style-border-toggle input,.refinement-dialog .style-border-options input{width:18px;height:18px;min-height:18px;margin:0;flex-shrink:0;accent-color:#6F0801}
+.style-border-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.refinement-dialog .style-border-options label{display:flex;flex-direction:row;align-items:center;gap:10px;border:1px solid #e6ddd0;border-radius:9px;padding:12px;background:#fff}.style-border-options small{margin:2px 0 0;font-weight:400}
+.pricing-alert{font-size:13px;line-height:1.5;background:#fff4dd;border:1px solid #e9d1a1;border-radius:9px;padding:12px 14px;color:#6b4519}
+.pizza-pricing-dialog .pricing-border-list .border-rule{grid-template-columns:minmax(120px,2fr) minmax(100px,1fr) 38px}
+.add-border-filling{display:inline-flex;align-items:center;gap:8px;padding:11px 14px;border:1px solid #d8c8b3;border-radius:8px;background:#f8f2e8;color:#6F0801;font:inherit;font-weight:650;cursor:pointer}
+.pizza-style-picker{border:0;padding:0;margin:24px 0 18px;min-width:0}.pizza-style-picker legend{font-size:14px;font-weight:750;margin-bottom:12px}.pizza-style-picker>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.pizza-style-picker label{display:flex;align-items:center;gap:10px;min-height:76px;padding:14px 12px;border:1px solid #ddd4c8;border-radius:12px;cursor:pointer;background:#fff}.pizza-style-picker label.selected{background:#fbf4e9;border-color:#6F0801}.pizza-style-picker input{width:16px;height:16px;accent-color:#6F0801;flex-shrink:0}.pizza-style-picker span{display:grid;gap:6px}.pizza-style-picker b{font-size:14px}.pizza-style-picker small{font-size:12px;color:#6f6255}.cart-pizza-style{display:block;color:#6F0801;font-size:12px;font-weight:650;margin:4px 0}
+@media(max-width:760px){.pizza-pricing-dialog{padding:18px}.pricing-tabs{gap:6px}.pricing-tabs button{padding:9px 10px;font-size:12px}.pizza-pricing-dialog .rule-sizes{gap:6px}.refinement-dialog .style-money-field>input{padding:10px 4px;font-size:14px}.style-money-field>span{padding-left:5px;font-size:11px}.style-border-options{grid-template-columns:1fr}.pizza-pricing-dialog .pricing-border-list .border-rule{grid-template-columns:1fr 38px}.pizza-pricing-dialog .pricing-border-list .border-rule>label:first-child{grid-column:1/-1}.pizza-style-picker label{padding:12px 10px;gap:8px}.pizza-style-picker b{font-size:13px}.pizza-style-picker small{font-size:11px}}
+.refinement-dialog fieldset>button,.refinement-dialog .border-rule>button,.refinement-dialog footer>button:first-child{border:1px solid #dcd5ca;border-radius:8px;background:#f7f4ef;color:#131313;padding:10px 12px;cursor:pointer;font:inherit;font-weight:600}
+.refinement-dialog .border-rule>button{padding:10px 7px;display:grid;place-items:center}
+@media(max-width:760px){.table-consumption{margin:14px 16px}.manual-catalog .checkout-payment>div button{font-size:14px}.manual-catalog .checkout-totals>div{font-size:14px}}
+
+.inherited-pizza-price{padding:18px;border:1px solid #e4d4ba;border-radius:12px;background:#fff9ee;font-size:14px;line-height:1.6}.inherited-pizza-price p{margin:8px 0 0;color:#67543d}
+@media(max-width:760px){.pizza-pricing-dialog .rule-sizes{grid-template-columns:repeat(2,minmax(0,1fr)) !important}}
+
+/* Icones simples de mesa, vistos de frente. */
+.tables-grid{grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:20px 16px}
+.table-card{--table-ink:#166534;--table-fill:#eaf7ef;--chair-fill:#d8efdf;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:7px;min-width:0;padding:10px 8px 16px;border:0;border-radius:18px;background:transparent;color:var(--table-ink);text-align:center;font:inherit;cursor:pointer;transition:background .18s ease,transform .18s ease}
+.table-card.occupied{--table-ink:#9f201b;--table-fill:#fff0ee;--chair-fill:#f7d9d5}
+.table-card:hover{background:#ffffff94;transform:translateY(-3px)}.table-card:active{transform:translateY(0)}.table-card:focus-visible{outline:2px solid var(--table-ink);outline-offset:3px;background:#fff}
+.table-card .table-symbol{display:block;width:100px;max-width:100%;height:78px;flex-shrink:0;margin-bottom:4px}
+.table-card .table-number-label{font-size:18px;font-weight:750;line-height:1.3;color:var(--table-ink)}
+.table-card .table-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--table-fill);color:var(--table-ink)}
+.table-status i,.table-status-legend i{display:block;width:6px;height:6px;flex-shrink:0;border-radius:50%;background:currentColor}
+.table-card .table-amount{font-size:15px;font-weight:750;color:var(--table-ink);line-height:1.4}.table-card small{font-size:12px;line-height:1.4;color:#74675b}
+.table-status-legend{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin:0 0 18px;font-size:13px;font-weight:650;color:#166534}.table-status-legend>span{display:inline-flex;align-items:center;gap:8px}.table-status-legend .occupied{color:#9f201b}
+@media(max-width:760px){.tables-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 10px}.table-card{padding:8px 6px 14px}.table-card .table-symbol{width:92px;height:72px}.table-status-legend{gap:16px;margin-bottom:14px}}
+@media(prefers-reduced-motion:reduce){.table-card{transition:none}.table-card:hover{transform:none}}

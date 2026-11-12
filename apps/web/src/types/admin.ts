@@ -12,13 +12,15 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
 export type OrderOption = { id: string; optionName: string; optionGroupName: string; priceDelta: string; quantity: number };
 export type OrderItem = { id: string; productName: string; quantity: number; unitPrice: string; lineTotal: string; notes?: string; selectedOptions: OrderOption[] };
 export type Order = {
+  tableNumber?: number | null;
+  diningSessionId?: string | null;
   paymentStatus?: "NOT_REQUIRED" | "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
   id: string; displayNumber: string; status: OrderStatus; fulfillmentType: "PICKUP" | "DELIVERY";
   customerName: string; customerPhone: string; notes?: string; street?: string; number?: string;
   complement?: string; neighborhood?: string; city?: string; state?: string; postalCode?: string;
   addressReference?: string; subtotal: string; deliveryFee: string; digitalSecurityFee?: string; total: string; cancellationReason?: string;
   couponCode?: string; discountAmount?: string;
-  paymentMethod?: "PIX" | "CASH" | "CREDIT_CARD" | "DEBIT_CARD" | "ONLINE"; changeFor?: string;
+  paymentMethod?: "PIX" | "CASH" | "CREDIT_CARD" | "DEBIT_CARD" | "ONLINE" | "RECEIVED_ONLINE"; changeFor?: string;
   createdAt: string; updatedAt: string; items: OrderItem[]; statusHistory: Array<{ id: string; status: OrderStatus; createdAt: string }>;
 };
 

@@ -9,8 +9,9 @@ import { formatCurrencyField, parseCurrencyField } from "../../utils/currency-fi
 const DIGITAL_SECURITY_FEE = 0.99;
 
 export type CheckoutItem = {
+  style?: string;
   size?: string;
-  pizzaSelections?: Array<{ mode: "whole" | "half"; leftId?: string; rightId?: string }>;
+  pizzaSelections?: Array<{ mode: "whole" | "half"; leftId?: string; rightId?: string; borderId?: string }>;
   productId: string;
   productName: string;
   quantity: number;
@@ -24,13 +25,14 @@ export type CheckoutItem = {
   }>;
 };
 type Props = {
+  manual?: boolean;
   subtotal: number;
   items: CheckoutItem[];
   initialCouponCode?: string;
   onBack: () => void;
   onComplete: (orderId: string, paymentPath: string | null) => void;
 };
-type PaymentMethod = "PIX" | "CASH" | "ONLINE" | "CREDIT_CARD" | "DEBIT_CARD";
+type PaymentMethod = "PIX" | "CASH" | "ONLINE" | "CREDIT_CARD" | "DEBIT_CARD" | "RECEIVED_ONLINE";
 type DeliveryConfig = {
   isOpen: boolean;
   allowDelivery: boolean;
@@ -69,6 +71,7 @@ const formatCep = (value: string) =>
     .slice(0, 8)
     .replace(/^(\d{5})(\d+)/, "$1-$2");
 export function CheckoutForm({
+  manual = false,
   subtotal,
   items,
   initialCouponCode = "",
@@ -126,6 +129,7 @@ export function CheckoutForm({
         config.payments.onlineCard && ["DEBIT_CARD", "Débito online"],
       ].filter((item): item is [PaymentMethod, string] => Boolean(item))
     : [];
+  if (manual) availablePayments.push(["RECEIVED_ONLINE", "Pagamento online já recebido"]);
 
   useEffect(() => {
     void fetch(`${API_URL}/delivery/config`)
@@ -239,7 +243,7 @@ export function CheckoutForm({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!config?.isOpen) {
+    if (!manual && !config?.isOpen) {
       setError("A loja está fechada no momento.");
       return;
     }
@@ -253,6 +257,7 @@ export function CheckoutForm({
     setError("");
     const form = new FormData(event.currentTarget);
     const body = {
+      manual,
       customerName: form.get("name"),
       customerPhone: form.get("phone"),
       customerEmail: form.get("email"),
@@ -280,7 +285,7 @@ export function CheckoutForm({
     try {
       const response = await fetch(`${API_URL}/orders`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(manual ? { Authorization: `Bearer ${localStorage.getItem("urfood_token")}` } : {}) },
         body: JSON.stringify(body),
       });
       const data = (await response.json()) as {
@@ -345,7 +350,7 @@ export function CheckoutForm({
         <span>FINALIZAR PEDIDO</span>
         <h2>Como deseja receber?</h2>
       </div>
-      {config && !config.isOpen && (
+      {config && !config.isOpen && !manual && (
         <p className="checkout-operational-alert">
           A loja está fechada conforme o horário de funcionamento. O envio de
           pedidos será liberado na próxima abertura.
@@ -647,7 +652,7 @@ export function CheckoutForm({
         disabled={
           loading ||
           !config ||
-          !config.isOpen ||
+          (!manual && !config.isOpen) ||
           availablePayments.length === 0 ||
           (type === "DELIVERY" && (!quote || !quote.eligible))
         }
@@ -670,7 +675,7 @@ export function CheckoutForm({
           <p id="lgpd-fee-description">A taxa de LGPD garante a segurança e a experiência do pedido online.</p>
           <button type="button" className="lgpd-fee-confirm" onClick={() => setShowLgpdInfo(false)}>Entendi</button>
         </section>
-      </div>, globalThis.document.body,
+      </div>, (manual ? globalThis.document.querySelector(".manual-order-dialog") : null) ?? globalThis.document.body,
     )}
     </>
   );

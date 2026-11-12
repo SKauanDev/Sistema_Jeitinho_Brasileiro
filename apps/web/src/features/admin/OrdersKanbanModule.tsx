@@ -1,3 +1,5 @@
+import { ManualOrderDialog } from "./ManualOrderDialog";
+import { getCurrentUser } from "../../services/auth";
 import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -46,6 +48,7 @@ const currency = (value: string | number) =>
   Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export function OrdersKanbanModule() {
+  const [manualOpen, setManualOpen] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [selected, setSelected] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
@@ -210,12 +213,14 @@ export function OrdersKanbanModule() {
     );
   return (
     <div className="admin-module kanban-module">
+      {manualOpen && <ManualOrderDialog onClose={() => setManualOpen(false)} onCreated={() => { setManualOpen(false); void adminApi.orders().then(setOrders); setNotice("Pedido manual registrado"); }} />}
       <div className="module-title">
         <div>
           <span>TEMPO REAL</span>
           <h1>Central de pedidos</h1>
           <p>Confirme e avance os pedidos com poucos cliques.</p>
         </div>
+        {getCurrentUser()?.role !== "KITCHEN" && <button className="catalog-primary" onClick={() => setManualOpen(true)}>+ Adicionar pedido manual</button>}
         <div className="live-indicator">
           <i /> {realtimeConnected ? "Conectado em tempo real" : "Tempo real desconectado"}
         </div>
@@ -271,7 +276,7 @@ export function OrdersKanbanModule() {
                       onOpen={() => setSelected(order)}
                       onAdvance={() =>
                         nextStatus[order.status] &&
-                        void changeStatus(order, nextStatus[order.status]!)
+                        void changeStatus(order, order.tableNumber && order.status === "READY" ? "COMPLETED" : nextStatus[order.status]!)
                       }
                     />
                   ))
@@ -356,7 +361,7 @@ function OrderCard({
               </>
             ) : (
               <>
-                <Store /> Retirada
+                <Store /> {order.tableNumber ? `Mesa ${order.tableNumber}` : "Retirada"}
               </>
             )}
           </span>
@@ -483,9 +488,9 @@ function OrderDetails({
           {nextStatus[order.status] && ["APPROVED", "NOT_REQUIRED"].includes(order.paymentStatus ?? "NOT_REQUIRED") && (
             <button
               className="advance-order"
-              onClick={() => onChangeStatus(nextStatus[order.status]!)}
+              onClick={() => onChangeStatus(order.tableNumber && order.status === "READY" ? "COMPLETED" : nextStatus[order.status]!)}
             >
-              <PackageCheck /> {ORDER_STATUS_LABEL[nextStatus[order.status]!]}
+              <PackageCheck /> {ORDER_STATUS_LABEL[order.tableNumber && order.status === "READY" ? "COMPLETED" : nextStatus[order.status]!]}
             </button>
           )}
         </footer>
@@ -500,6 +505,7 @@ const paymentLabels: Record<string, string> = {
   CREDIT_CARD: "Cartão de crédito",
   DEBIT_CARD: "Cartão de débito",
   ONLINE: "Cartão na entrega",
+  RECEIVED_ONLINE: "Pagamento online recebido",
 };
 const paymentLabel = (method?: Order["paymentMethod"]) =>
   paymentLabels[method ?? ""] ?? "Não informado";

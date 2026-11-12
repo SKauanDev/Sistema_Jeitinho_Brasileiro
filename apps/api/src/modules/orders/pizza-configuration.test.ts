@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { parseSizes } from "../catalog/pizza-sizes.js";
 import { resolvePizzaConfiguration, type PizzaProduct } from "./pizza-configuration.js";
+import { emptyPizzaRules } from "../catalog/pizza-rules.js";
 
 const cheese: PizzaProduct = { id: "cheese", name: "Queijos", category: "Pizzas", pizzaSlots: 1, price: 30, promotionalPrice: 1, sizes: [{ size: "P", price: 30 }, { size: "G", price: 60 }] };
 const bacon: PizzaProduct = { ...cheese, id: "bacon", name: "Bacon", sizes: [{ size: "G", price: 75 }] };
@@ -41,4 +42,32 @@ test("produtos sem tamanhos continuam aceitando o preço único", () => {
   const legacy = { ...cheese, sizes: null, promotionalPrice: 25 };
   assert.equal(resolvePizzaConfiguration(legacy, undefined, undefined, flavors).unitPrice, 25);
   assert.throws(() => resolvePizzaConfiguration(legacy, "G", undefined, flavors));
+});
+
+test("comum tem preço fixo por tamanho e comum/premium usa regra própria", () => {
+  const premium = { ...bacon, id: "premium", category: "Premium" };
+  const rules = { ...emptyPizzaRules(), traditional: [{ size: "G" as const, price: 59 }], mixed: [{ size: "G" as const, price: 89 }] };
+  const all = new Map([...flavors, [premium.id, premium]]);
+  assert.equal(resolvePizzaConfiguration(cheese, "G", half, all, rules).unitPrice, 59);
+  assert.equal(resolvePizzaConfiguration(cheese, "G", [{ mode: "whole", leftId: cheese.id }], all, rules).unitPrice, 59);
+  const mixed = [{ mode: "half", leftId: cheese.id, rightId: premium.id }];
+  assert.equal(resolvePizzaConfiguration(cheese, "G", mixed, all, rules).unitPrice, 89);
+  assert.equal(resolvePizzaConfiguration(premium, "G", mixed, all, rules).unitPrice, 89);
+});
+test("doce só combina com doce, inclusive nos combos", () => {
+  const sweet = { ...cheese, id: "sweet", category: "Pizza doce" }, other = { ...sweet, id: "other" };
+  const all = new Map([...flavors, [sweet.id, sweet], [other.id, other]]);
+  assert.throws(() => resolvePizzaConfiguration(cheese, "G", [{ mode: "half", leftId: cheese.id, rightId: sweet.id }], all), /doce/);
+  assert.throws(() => resolvePizzaConfiguration(sweet, "G", half, all), /doce/);
+  assert.equal(resolvePizzaConfiguration(sweet, "G", [{ mode: "half", leftId: sweet.id, rightId: other.id }], all).unitPrice, 60);
+  const combo = { ...cheese, category: "Combos", pizzaSlots: 1, sizes: null };
+  assert.throws(() => resolvePizzaConfiguration(combo, undefined, [{ mode: "half", leftId: cheese.id, rightId: sweet.id }], all), /doce/);
+});
+test("borda tem valor canônico por pizza, não altera preço base e rejeita borda oculta", () => {
+  const rules = { ...emptyPizzaRules(), borders: [{ id: "border", name: "Catupiry", type: "SAVORY" as const, price: 12, active: true }] };
+  const result = resolvePizzaConfiguration(cheese, "G", [{ mode: "half", leftId: cheese.id, rightId: bacon.id, borderId: "border" }], flavors, rules);
+  assert.equal(result.unitPrice, 75);
+  assert.deepEqual(result.options.at(-1), { name: "Catupiry", group: "Borda · Pizza 1", price: 12 });
+  rules.borders[0]!.active = false;
+  assert.throws(() => resolvePizzaConfiguration(cheese, "G", [{ mode: "whole", leftId: cheese.id, borderId: "border" }], flavors, rules), /borda/);
 });

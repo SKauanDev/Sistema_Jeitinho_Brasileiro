@@ -57,7 +57,7 @@ export function OrderStatusPage() {
       setError(
         reason instanceof Error
           ? reason.message
-          : "NÃ£o foi possÃ­vel acompanhar o pedido.",
+          : "Não foi possível acompanhar o pedido.",
       );
     } finally {
       setLoading(false);
@@ -99,7 +99,7 @@ export function OrderStatusPage() {
       <main className="status-page">
         <section className="status-state status-error">
           <AlertCircle />
-          <h1>NÃ£o foi possÃ­vel acompanhar</h1>
+          <h1>Não foi possível acompanhar</h1>
           <p>{error}</p>
           <button
             onClick={() => {

@@ -25,6 +25,7 @@ import { adminHome, getCurrentUser, logout } from "../services/auth";
 const navigation: Array<{ path: string; label: string; icon: typeof BarChart3; orders?: boolean; adminOnly?: boolean }> = [
   { path: "/admin/dashboard", label: "Dashboard", icon: BarChart3 },
   { path: "/pedidos", label: "Pedidos", icon: ClipboardList, orders: true },
+  { path: "/mesas", label: "Mesas e comandas", icon: Store },
   { path: "/admin/cardapio", label: "Cardápio", icon: UtensilsCrossed },
   { path: "/estoque", label: "Estoque", icon: Boxes },
   { path: "/clientes", label: "Clientes", icon: Users },

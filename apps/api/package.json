@@ -31,7 +31,9 @@
     "db:migrate-order-ownership": "tsx src/database/migrate-order-ownership.ts",
     "check:payments": "tsx src/diagnostics/check-payments.ts",
     "db:migrate-pizza-sizes": "tsx src/database/migrate-pizza-sizes.ts",
-    "db:migrate-kitchen-role": "tsx src/database/migrate-kitchen-role.ts"
+    "db:migrate-kitchen-role": "tsx src/database/migrate-kitchen-role.ts",
+    "db:migrate-dining": "tsx src/database/migrate-dining.ts",
+    "db:configure-pizza-styles": "tsx src/database/configure-pizza-styles.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

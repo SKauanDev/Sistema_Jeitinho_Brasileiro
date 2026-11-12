@@ -250,6 +250,50 @@ npm run db:migrate-kitchen-role -w @urfood/api
 
 A migração preserva as contas existentes. Após publicar, atualize a API no VPS e o frontend na Vercel.
 
+## Pizzas, pedidos manuais e comandas
+
+Antes de iniciar a API desta versão em outro banco, execute a migração aditiva:
+
+```powershell
+npm run db:migrate-dining -w @urfood/api
+```
+
+Ela adiciona regras de pizza, mesas, sessões de consumo e identificação da mesa no pedido. Preserva produtos e pedidos existentes. Depois, compile e reinicie a API no VPS e publique o frontend na Vercel.
+
+Em **Cardápio → Preços e bordas**, a organização é **categoria → estilo da massa → tamanho**. Cada sabor é cadastrado uma única vez e herda a tabela da categoria. As categorias com “premium” no nome identificam os sabores premium; as com “doce” identificam os doces. O cadastro do sabor mostra os preços herdados, sem exigir repetir os valores por produto.
+
+Para cadastrar a tabela informada em outro ambiente, depois da migração acima, execute uma única vez:
+
+```powershell
+npm run db:configure-pizza-styles -w @urfood/api
+```
+
+O comando preserva os recheios existentes e não sobrescreve uma tabela de estilos já configurada.
+
+| Categoria | Estilo | P | M | G | GG | Borda recheada |
+| --- | --- | --- | --- | --- | --- | --- |
+| Comum | Napolitana | R$ 32,90 | R$ 34,00 | R$ 67,00 | R$ 77,00 | + R$ 15,00 |
+| Comum | Tonda romana | R$ 35,00 | R$ 50,00 | R$ 60,00 | — | Não oferecida |
+| Premium | Napolitana | R$ 49,00 | R$ 59,00 | R$ 77,00 | R$ 87,00 | Acréscimo pendente no admin |
+| Premium | Tonda romana | R$ 44,00 | R$ 55,00 | R$ 70,00 | — | Não oferecida |
+| Doce | Napolitana | R$ 39,00 | R$ 54,00 | R$ 67,00 | R$ 77,00 | + R$ 18,00 |
+
+Na aba **Recheios de borda**, cadastre os nomes e depois marque quais recheios cada categoria oferece. O acréscimo é da categoria/estilo e substitui o preço antigo do recheio nas pizzas avulsas. Borda com preço pendente não aparece para o cliente. Tonda romana aceita apenas P/M/G e não oferece borda; pizza doce é somente napolitana e combina apenas com outros sabores doces.
+
+O meio a meio comum + premium usa uma **tabela própria por estilo**, preenchida na aba correspondente, e a borda segue a regra da premium. Preços mistos ficam pendentes até serem informados; não são copiados da premium. Sem preço em um tamanho/combinação, o pedido não pode ser concluído. Os dois sabores usam o mesmo estilo e tamanho. Premium + premium segue a tabela premium; doce + doce segue a tabela doce. Combos preservam seus preços e adicionais anteriores; os preços de estilos se aplicam às pizzas avulsas.
+
+O cliente escolhe estilo, tamanho, sabores e borda. O pedido guarda os nomes e valores efetivos para cozinha, histórico e impressão. O servidor recalcula tudo e rejeita estilos, tamanhos e bordas inválidos, independentemente dos valores enviados pelo navegador.
+
+O catálogo público e o admin devolvem os preços herdados da tabela, mesmo que um produto ainda tenha valores antigos no cadastro. “A partir de” indica o menor preço entre os estilos e tamanhos disponíveis; o preço exato aparece ao selecionar massa e tamanho. Ao salvar a tabela, o cardápio aberto na mesma origem é atualizado, inclusive o carrinho. Páginas em outros dispositivos atualizam ao recuperar o foco ou na próxima verificação periódica. Se uma configuração do carrinho perder disponibilidade, o sistema pede uma nova escolha antes de continuar.
+
+Na **Central de pedidos → Adicionar pedido manual**, monte o pedido no mesmo cardápio e preencha os dados do cliente. A opção **Pagamento online já recebido** registra o recebimento confirmado pela equipe; não gera cobrança no Mercado Pago. Somente administradores e operadores podem criar pedidos manuais. O perfil Cozinha continua restrito ao acompanhamento e avanço de pedidos.
+
+Em **Mesas e comandas**, o padrão é 40 mesas. Ajuste a quantidade para ocultar as excedentes, preservando os números, links e históricos. Mesas com contas abertas não podem ser ocultadas. Imprima os QR codes pelo módulo; cada link `/mesa/:chave` identifica uma única mesa e funciona sem conta de cliente. Imprima a partir do domínio público que os clientes utilizarão, nunca do endereço localhost.
+
+O cliente escaneia, abre a comanda e envia pedidos com observações diretamente à cozinha. O consumo não exige nome, telefone ou endereço e não recebe taxa de entrega ou taxa digital. Novos pedidos entram na central com os mesmos alertas de som. A equipe confere o consumo e registra a forma de recebimento ao fechar a conta; esse registro não dispara uma cobrança eletrônica. O sistema verifica se o consumo e a sessão ainda são os mesmos antes de fechar. A próxima abertura cria uma sessão nova. Pedidos de contas recebidas não podem ser cancelados pela central.
+
+O cupom térmico usa o logo atual, identifica a mesa quando houver, tem espaços reduzidos e texto reforçado. O QR de acompanhamento foi removido do cupom; os QR codes de mesa são impressos separadamente.
+
 ## Mercado Pago
 
 Configure no backend as credenciais da aplicação e a assinatura secreta do webhook. No painel Mercado Pago, utilize o endpoint:

@@ -36,6 +36,7 @@ const paymentNames: Record<string, string> = {
   CREDIT_CARD: "Cartão de crédito online",
   DEBIT_CARD: "Cartão de débito online",
   ONLINE: "Cartão na entrega",
+  RECEIVED_ONLINE: "Pagamento online recebido",
 };
 
 financeRouter.get("/", async (request, response) => {

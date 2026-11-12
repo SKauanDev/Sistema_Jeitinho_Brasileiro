@@ -8,6 +8,8 @@ import {
   OrderStatusHistory,
   StoreHour,
   StoreSetting,
+  DiningSession,
+  DiningTable,
 } from "../../database/models.js";
 import { sequelize } from "../../database/sequelize.js";
 import { expireUnpaidOrders } from "../payments/payment-timeout.service.js";
@@ -268,7 +270,17 @@ adminRouter.patch("/orders/:id/status", async (request, response) => {
     response.status(400).json({ message: "Informe o motivo do cancelamento." });
     return;
   }
-  await sequelize.transaction(async (transaction) => {
+  const transitionError = await sequelize.transaction(async (transaction) => {
+    if (order.getDataValue("diningSessionId")) {
+      const session = await DiningSession.findByPk(order.getDataValue("diningSessionId"), { transaction });
+      if (session) {
+        await DiningTable.findByPk(session.getDataValue("tableId"), { transaction, lock: transaction.LOCK.UPDATE });
+        await session.reload({ transaction, lock: transaction.LOCK.UPDATE });
+        if (status === "CANCELED" && session.getDataValue("closedAt")) return "Esta comanda já foi recebida e fechada. O pedido não pode ser cancelado pela central.";
+      }
+    }
+    await order.reload({ transaction, lock: transaction.LOCK.UPDATE });
+    if (!ORDER_TRANSITIONS[String(order.getDataValue("status")) as OrderStatus]?.includes(status)) return "O pedido foi atualizado por outra pessoa. Atualize a central.";
     await order.update(
       {
         status,
@@ -289,7 +301,9 @@ adminRouter.patch("/orders/:id/status", async (request, response) => {
       )
     )
       await applyOrderInventory(String(order.getDataValue("id")), transaction);
+    return null;
   });
+  if (transitionError) { response.status(409).json({ message: transitionError }); return; }
   const updated = await Order.findByPk(request.params.id, {
     include: [
       {

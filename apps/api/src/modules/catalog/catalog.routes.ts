@@ -14,6 +14,9 @@ import { sequelize } from "../../database/sequelize.js";
 import { requireAdmin, requireAuth } from "../../shared/auth.middleware.js";
 import { syncCatalogInventory } from "../inventory/catalog-inventory.service.js";
 import { createAsyncCache } from "../../shared/async-cache.js";
+import { applyCatalogPricing } from "./catalog-pricing.js";
+import { readPizzaRules } from "./pizza-rules.js";
+import { getStoreSetting } from "../settings/store-operation.service.js";
 
 export const catalogRouter = Router();
 const adminCatalogRouter = Router();
@@ -65,13 +68,14 @@ const publicCatalog = createAsyncCache(30_000, async () => {
       [{ model: Product, as: "products" }, "position", "ASC"],
     ],
   });
-  return JSON.stringify(categories);
+  return categories.map(category => category.get({ plain: true })) as Array<{ name: string; products: Array<{ price: unknown }> }>;
 });
 
 catalogRouter.get("/", async (_request, response) => {
   // Server-side cache only: no stale CDN copy after an administrator edits a product.
   response.setHeader("Cache-Control", "no-cache");
-  response.type("json").send(await publicCatalog.get());
+  const [categories, settings] = await Promise.all([publicCatalog.get(), getStoreSetting()]);
+  response.json(applyCatalogPricing(categories, readPizzaRules(settings.getDataValue("pizzaRules"))));
 });
 
 catalogRouter.get("/images/:id", async (request, response) => {
@@ -116,9 +120,10 @@ adminCatalogRouter.get("/", async (_request, response) => {
     },
     {},
   );
+  const rules = readPizzaRules((await getStoreSetting()).getDataValue("pizzaRules"));
+  const pricedCategories = applyCatalogPricing(categories.map(category => category.get({ plain: true })) as Array<{ id: string; name: string; products: Array<{ price: unknown }> }>, rules);
   response.json(
-    categories.map((category) => {
-      const plain = category.get({ plain: true }) as Record<string, unknown>;
+    pricedCategories.map((plain) => {
       return {
         ...plain,
         trashedProductCount: trashCount[String(plain.id)] ?? 0,

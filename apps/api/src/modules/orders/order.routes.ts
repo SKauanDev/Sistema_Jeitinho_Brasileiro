@@ -1,5 +1,7 @@
 import { PizzaValidationError } from "../catalog/pizza-sizes.js";
 import { resolvePizzaConfiguration, type PizzaSelection, type PizzaProduct } from "./pizza-configuration.js";
+import { readPizzaRules } from "../catalog/pizza-rules.js";
+import { lockedTable } from "../dining/dining.routes.js";
 import { Router } from "express";
 import {
   Category,
@@ -34,6 +36,8 @@ import {
 } from "../settings/store-operation.service.js";
 
 type OrderPayload = {
+  manual?: boolean;
+  table?: { key: string; sessionId: string };
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string;
@@ -49,11 +53,12 @@ type OrderPayload = {
     postalCode?: string;
   };
   deliveryFee?: number;
-  paymentMethod?: "PIX" | "CASH" | "CREDIT_CARD" | "DEBIT_CARD" | "ONLINE";
+  paymentMethod?: "PIX" | "CASH" | "CREDIT_CARD" | "DEBIT_CARD" | "ONLINE" | "RECEIVED_ONLINE";
   changeFor?: number;
   couponCode?: string;
   notes?: string;
   items?: Array<{
+    style?: string;
     size?: string;
     pizzaSelections?: PizzaSelection[];
     productId?: string;
@@ -70,14 +75,32 @@ type OrderPayload = {
   }>;
 };
 
-export const orderRouter = Router();
+export function createOrderRouter(dependencies: { isOpen?: typeof effectiveStoreStatus; settings?: typeof getStoreSetting } = {}) {
+const orderRouter = Router();
 
 orderRouter.post("/", async (request, response) => {
   const payload = (request.body ?? {}) as OrderPayload;
+  let manual = false;
+  if (payload.manual) {
+    try {
+      const token = request.header("Authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+      const claims = jwt.verify(token, env.jwtSecret, { algorithms: ["HS256"] });
+      const identity = typeof claims === "string" ? null : await resolveIdentity(claims);
+      if (!identity || !["ADMIN", "OPERATOR"].includes(identity.role)) throw new Error();
+      manual = true;
+    } catch { response.status(403).json({ message: "Apenas a equipe pode registrar pedidos manuais." }); return; }
+  }
+  if (payload.paymentMethod === "RECEIVED_ONLINE" && !manual) { response.status(403).json({ message: "Pagamento recebido só pode ser registrado pela equipe." }); return; }
+  if (payload.table) {
+    if (manual || typeof payload.table !== "object") { response.status(400).json({ message: "Comanda inválida." }); return; }
+    payload.customerName = "Mesa"; payload.customerPhone = "Mesa";
+    payload.fulfillmentType = "PICKUP"; payload.paymentMethod = "CASH";
+    payload.address = undefined; payload.couponCode = undefined;
+  }
   if (!Array.isArray(payload.items) || payload.items.length > 50 || payload.items.some(item => !item || typeof item !== "object" || (item.options !== undefined && (!Array.isArray(item.options) || item.options.length > 30 || item.options.some(option => !option || typeof option !== "object"))))) {
     response.status(400).json({ message: "Carrinho inválido ou muito grande." }); return;
   }
-  if (payload.items.some(item => item.pizzaSelections !== undefined && (!Array.isArray(item.pizzaSelections) || item.pizzaSelections.length > 10 || item.pizzaSelections.some(pizza => !pizza || typeof pizza !== "object")))) { response.status(400).json({ message: "Sele??o de pizzas inv?lida." }); return; }
+  if (payload.items.some(item => item.pizzaSelections !== undefined && (!Array.isArray(item.pizzaSelections) || item.pizzaSelections.length > 10 || item.pizzaSelections.some(pizza => !pizza || typeof pizza !== "object")))) { response.status(400).json({ message: "Seleção de pizzas inválida." }); return; }
   if (
     !payload.customerName ||
     !payload.customerPhone ||
@@ -108,7 +131,7 @@ orderRouter.post("/", async (request, response) => {
   try {
     let customerAccountId: string | null = null;
     const customerToken = request.header("Authorization")?.replace(/^Bearer\s+/i, "");
-    if (customerToken) {
+    if (customerToken && !manual && !payload.table) {
       try {
         const claims = jwt.verify(customerToken, env.jwtSecret, { algorithms: ["HS256"] });
         const identity = typeof claims === "string" ? null : await resolveIdentity(claims);
@@ -116,8 +139,8 @@ orderRouter.post("/", async (request, response) => {
         customerAccountId = identity.sub!;
       } catch { response.status(401).json({ message: "Entre novamente no perfil para continuar o pedido." }); return; }
     }
-    const settings = await getStoreSetting();
-    if (!(await effectiveStoreStatus(settings)))
+    const settings = await (dependencies.settings ?? getStoreSetting)();
+    if (!manual && !(await (dependencies.isOpen ?? effectiveStoreStatus)(settings)))
       throw new Error("A loja está fechada no momento.");
     if (
       payload.fulfillmentType === "DELIVERY" &&
@@ -125,7 +148,7 @@ orderRouter.post("/", async (request, response) => {
     )
       throw new Error("A entrega está indisponível no momento.");
     if (
-      payload.fulfillmentType === "PICKUP" &&
+      !payload.table && payload.fulfillmentType === "PICKUP" &&
       !settings.getDataValue("allowPickup")
     )
       throw new Error("A retirada está indisponível no momento.");
@@ -140,10 +163,12 @@ orderRouter.post("/", async (request, response) => {
             : ["CREDIT_CARD", "DEBIT_CARD"].includes(payload.paymentMethod)
               ? enabledPayments.onlineCard
               : false;
-    if (!paymentAllowed)
+    if (!paymentAllowed && !payload.table && !(manual && payload.paymentMethod === "RECEIVED_ONLINE"))
       throw new Error("A forma de pagamento selecionada está indisponível.");
     if (payload.fulfillmentType === "DELIVERY") assertDeliveryLocality({ city: settings.getDataValue("city"), state: settings.getDataValue("state") }, payload.address ?? {});
     const result = await sequelize.transaction({ isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED }, async (transaction) => {
+      const table = payload.table ? await lockedTable(payload.table.key, payload.table.sessionId, transaction, Number(settings.getDataValue("tableCount"))) : null;
+      if (table) payload.customerName = `Mesa ${table.getDataValue("number")}`;
       const productIds = [...new Set(payload.items!.flatMap(item => [item.productId, ...(item.pizzaSelections ?? []).flatMap(pizza => [pizza.leftId, pizza.rightId])]).filter((id): id is string => Boolean(id)))];
       const optionIds = [...new Set(payload.items!.flatMap(item => (item.options ?? []).map(option => option.optionId)).filter((id): id is string => Boolean(id)))];
       // Two batched reads instead of one database round trip per product/additional.
@@ -159,10 +184,10 @@ orderRouter.post("/", async (request, response) => {
           if (!product)
             throw new Error("Um produto do carrinho não está mais disponível.");
           const quantity = orderQuantity(item.quantity);
-          const configuration = resolvePizzaConfiguration(pizzaProducts.get(item.productId)!, item.size, item.pizzaSelections, pizzaProducts);
+          const configuration = resolvePizzaConfiguration(pizzaProducts.get(item.productId)!, item.size, item.pizzaSelections, pizzaProducts, readPizzaRules(settings.getDataValue("pizzaRules")), item.style);
           const unitPrice = configuration.unitPrice;
           const normalizedOptions = await Promise.all(
-            (item.options ?? []).filter(selected => selected.group !== "Tamanho" && (item.pizzaSelections === undefined || !/^Pizza \d+/.test(selected.group ?? ""))).map(async (selected) => {
+            (item.options ?? []).filter(selected => !["Tamanho", "Estilo da massa"].includes(selected.group ?? "") && !/^Borda · Pizza/.test(selected.group ?? "") && (item.pizzaSelections === undefined || !/^Pizza \d+/.test(selected.group ?? ""))).map(async (selected) => {
               if (!selected.optionId) return { ...selected, price: 0 };
               const option = optionsById.get(selected.optionId);
               if (!option)
@@ -216,7 +241,7 @@ orderRouter.post("/", async (request, response) => {
         Number(settings.getDataValue("minimumOrder")),
         Number(zone?.getDataValue("minimumOrder") ?? 0),
       );
-      if (subtotal < minimumOrder)
+      if (!payload.table && subtotal < minimumOrder)
         throw new Error(
           `Pedido mínimo de R$ ${minimumOrder.toFixed(2).replace(".", ",")} para esta região.`,
         );
@@ -231,10 +256,12 @@ orderRouter.post("/", async (request, response) => {
           )
         : null;
       const discountAmount = couponResult?.discount ?? 0;
-      const total = orderTotal(subtotal, deliveryFee, discountAmount);
+      const total = payload.table ? subtotal : orderTotal(subtotal, deliveryFee, discountAmount);
       const order = await Order.create(
         {
           customerAccountId,
+          diningSessionId: table ? payload.table!.sessionId : null,
+          tableNumber: table?.getDataValue("number") ?? null,
           customerName: payload.customerName,
           customerPhone: payload.customerPhone,
           customerEmail: payload.customerEmail ? String(payload.customerEmail).trim() : null,
@@ -253,11 +280,12 @@ orderRouter.post("/", async (request, response) => {
           postalCode: payload.address?.postalCode,
           subtotal,
           deliveryFee,
-          digitalSecurityFee: DIGITAL_SECURITY_FEE,
+          digitalSecurityFee: payload.table ? 0 : DIGITAL_SECURITY_FEE,
           total,
           paymentMethod: payload.paymentMethod,
           paymentExpiresAt: ["PIX", "CREDIT_CARD", "DEBIT_CARD"].includes(String(payload.paymentMethod)) ? new Date(Date.now() + PAYMENT_TIMEOUT_MS) : null,
-          paymentStatus: ["PIX", "CREDIT_CARD", "DEBIT_CARD"].includes(
+          paidAt: payload.paymentMethod === "RECEIVED_ONLINE" ? new Date() : null,
+          paymentStatus: payload.paymentMethod === "RECEIVED_ONLINE" ? "APPROVED" : ["PIX", "CREDIT_CARD", "DEBIT_CARD"].includes(
             String(payload.paymentMethod),
           )
             ? "PENDING"
@@ -372,17 +400,18 @@ orderRouter.post("/", async (request, response) => {
       detail.includes("Quantidade inválida") ||
       detail.includes("cidade e UF") ||
       detail.includes("Pedido mínimo");
+    const diningError = /comanda|Comanda/.test(detail);
     const paymentFailure = ["PIX", "CREDIT_CARD", "DEBIT_CARD"].includes(
       String(payload.paymentMethod),
     );
     const message =
-      expected || operational || invalidPizza
+      expected || operational || invalidPizza || diningError
         ? detail
         : paymentFailure && detail
           ? `Falha no pagamento: ${detail}`
           : "Não foi possível registrar o pedido.";
     response
-      .status(invalidPizza ? 400 : expected || operational ? 409 : paymentFailure ? 502 : 500)
+      .status(invalidPizza ? 400 : expected || operational || diningError ? 409 : paymentFailure ? 502 : 500)
       .json({ message });
   }
 });
@@ -399,3 +428,6 @@ orderRouter.get("/:id", requireOrderAccess, async (request, response) => {
   }
   response.json(order);
 });
+return orderRouter;
+}
+export const orderRouter = createOrderRouter();

@@ -9,6 +9,8 @@ import "./pizza.css";
 import "./theme.css";
 
 const App = lazy(() => import("./App"));
+const TableMenuPage = lazy(() => import("./pages/TableMenuPage").then(module => ({ default: module.TableMenuPage })));
+const TablesModule = lazy(() => import("./features/admin/TablesModule").then(module => ({ default: module.TablesModule })));
 const AdminPage = lazy(() => import("./pages/AdminPage").then(module => ({ default: module.AdminPage })));
 const OrderStatusPage = lazy(() => import("./pages/OrderStatusPage").then(module => ({ default: module.OrderStatusPage })));
 const MyOrdersPage = lazy(() => import("./pages/MyOrdersPage").then(module => ({ default: module.MyOrdersPage })));
@@ -46,6 +48,7 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/" element={<LoginPage />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="/cardapio" element={<App />} />
+        <Route path="/mesa/:key" element={<TableMenuPage />} />
         <Route path="/status/:id" element={<OrderStatusPage />} />
         <Route path="/pagamento/pix/:id" element={<PixPaymentPage />} />
         <Route path="/pagamento/cartao/:id" element={<CardPaymentPage />} />
@@ -56,6 +59,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="/admin/dashboard" element={<DashboardModule />} />
             <Route path="/pedidos" element={<OrdersKanbanModule />} />
+            <Route path="/mesas" element={<TablesModule />} />
             <Route path="/admin/cardapio" element={<CatalogModule />} />
             <Route path="/estoque" element={<InventoryModule />} />
             <Route path="/clientes" element={<CustomersModule />} />
