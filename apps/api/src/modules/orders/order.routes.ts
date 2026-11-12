@@ -2,6 +2,7 @@ import { PizzaValidationError } from "../catalog/pizza-sizes.js";
 import { resolvePizzaConfiguration, type PizzaSelection, type PizzaProduct } from "./pizza-configuration.js";
 import { readPizzaRules } from "../catalog/pizza-rules.js";
 import { lockedTable } from "../dining/dining.routes.js";
+import { DINING_DENIED, readDiningAccess } from "../dining/dining-access.js";
 import { Router } from "express";
 import {
   Category,
@@ -80,6 +81,12 @@ const orderRouter = Router();
 
 orderRouter.post("/", async (request, response) => {
   const payload = (request.body ?? {}) as OrderPayload;
+  if (payload.table) {
+    const access = readDiningAccess(request, payload.table.key);
+    if (!access || !access.sessionId || access.sessionId !== payload.table.sessionId) {
+      response.status(403).json({ message: DINING_DENIED }); return;
+    }
+  }
   let manual = false;
   if (payload.manual) {
     try {

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { X, Printer, RefreshCw } from "lucide-react";
 import { authFetch } from "../../services/admin-api";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { saveTableAccess } from "../../services/table-access";
 import { ScanTableButton } from "../../components/TableScanner";
 type Table = { id: string; key: string; number: number; sessionId: string | null; total: number; orders: Array<{ id: string; displayNumber: string; status: string; total: string; notes?: string; items: Array<{ id: string; productName: string; quantity: number; selectedOptions: Array<{ optionName: string; optionGroupName: string }> }> }> };
 const money = (value: number | string) => Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -37,11 +38,12 @@ export function TablesModule() {
   </div>;
 }
 function TableDialog({ table, onClose, onClosed }: { table: Table; onClose: () => void; onClosed: () => void }) {
+  const navigate = useNavigate();
   const ref = useRef<HTMLDialogElement>(null);
   const [qr, setQr] = useState(""), [notes, setNotes] = useState(""), [paymentMethod, setPaymentMethod] = useState("CASH"), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const url = `${window.location.origin}/mesa/${table.key}`;
   useEffect(() => { ref.current?.showModal(); void QRCode.toDataURL(url, { width: 240, margin: 2 }).then(setQr).catch(() => setError("Falha ao gerar QR.")); }, [url]);
-  return <dialog ref={ref} className="refinement-dialog table-detail-dialog" onCancel={onClose}><header><h2>Mesa {table.number} · {table.sessionId ? money(table.total) : "Livre"}</h2><button aria-label="Fechar" onClick={onClose}><X /></button></header><details><summary>QR e link da mesa</summary>{qr && <img width={180} height={180} src={qr} alt={`QR da mesa ${table.number}`} />}<p><Link to={`/mesa/${table.key}`}>Abrir cardápio desta mesa</Link></p></details>{error && <p role="alert">{error}</p>}
+  return <dialog ref={ref} className="refinement-dialog table-detail-dialog" onCancel={onClose}><header><h2>Mesa {table.number} · {table.sessionId ? money(table.total) : "Livre"}</h2><button aria-label="Fechar" onClick={onClose}><X /></button></header><details><summary>QR e link da mesa</summary>{qr && <img width={180} height={180} src={qr} alt={`QR da mesa ${table.number}`} />}<p><button type="button" disabled={busy} onClick={async () => { setBusy(true); setError(""); try { const data = await authFetch<{ accessToken: string }>(`/admin/tables/${table.id}/access`, { method: "POST" }); saveTableAccess(table.key, data.accessToken); navigate(`/mesa/${table.key}`); } catch (reason) { setError(reason instanceof Error ? reason.message : "Falha ao abrir a mesa."); } finally { setBusy(false); } }}>Abrir cardápio desta mesa</button></p></details>{error && <p role="alert">{error}</p>}
     {table.orders.map(order => <article className="table-order" key={order.id}><b>Pedido #{order.displayNumber} · {order.status === "CANCELED" ? "Cancelado" : money(order.total)}</b>{order.items.map(item => <p key={item.id}><strong>{item.quantity}× {item.productName}</strong>{item.selectedOptions.map((option, i) => <small key={i}>{option.optionGroupName}: {option.optionName}</small>)}</p>)}{order.notes && <p><b>Observações:</b> {order.notes}</p>}</article>)}
     {table.sessionId && <form onSubmit={async event => { event.preventDefault(); if (!window.confirm(`Confirmar recebimento de ${money(table.total)} e liberar a mesa ${table.number}?`)) return; setBusy(true); setError(""); try { await authFetch(`/admin/tables/${table.id}/close`, { method: "POST", body: JSON.stringify({ sessionId: table.sessionId, expectedTotal: table.total, paymentMethod, notes }) }); onClosed(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Falha ao fechar."); } finally { setBusy(false); } }}><label>Pagamento recebido<select value={paymentMethod} onChange={event => setPaymentMethod(event.target.value)}><option value="CASH">Dinheiro</option><option value="PIX">Pix recebido</option><option value="ONLINE">Cartão na maquininha</option><option value="RECEIVED_ONLINE">Pagamento online recebido</option></select></label><label>Anotações da comanda<textarea maxLength={500} value={notes} onChange={event => setNotes(event.target.value)} /></label><footer><button disabled={busy}>{busy ? "Fechando..." : "Receber e fechar comanda"}</button></footer></form>}
   </dialog>;

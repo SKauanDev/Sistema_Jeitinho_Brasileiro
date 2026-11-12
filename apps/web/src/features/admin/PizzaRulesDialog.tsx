@@ -25,6 +25,17 @@ export function PizzaRulesDialog({ onClose }: { onClose: () => void }) {
   function legacySizes(key: "traditional" | "mixed", size: SizePrice["size"], price: number | null) {
     setRules(current => ({ ...current, [key]: [...current[key].filter(entry => entry.size !== size), ...(price ? [{ size, price }] : [])] }));
   }
+  function changeBorderType(id: string, type: "SAVORY" | "SWEET") {
+    setRules(current => {
+      const offered = current.menus?.some(menu => menu.borderIds.includes(id));
+      return { ...current, borders: current.borders.map(border => border.id === id ? { ...border, type } : border),
+        menus: current.menus?.map(menu => ({ ...menu, borderIds: [
+          ...menu.borderIds.filter(borderId => borderId !== id),
+          ...(offered && menu.style === "NAPOLITANA" && menu.borderMode === "PAID" && menu.kind === (type === "SWEET" ? "SWEET" : "TRADITIONAL") ? [id] : []),
+        ] })),
+      };
+    });
+  }
   return <dialog ref={dialog} className="refinement-dialog pizza-pricing-dialog" onCancel={onClose} onClick={event => event.target === event.currentTarget && onClose()}><form onSubmit={async event => {
     event.preventDefault(); setSaving(true); setError("");
     try { await savePizzaRules(rules); onClose(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Falha ao salvar."); } finally { setSaving(false); }
@@ -33,20 +44,20 @@ export function PizzaRulesDialog({ onClose }: { onClose: () => void }) {
     {loading ? <p>Carregando...</p> : <>
       <nav className="pricing-tabs" aria-label="Tabelas de preços">{(Object.entries(kinds) as Array<[MenuKind, string]>).map(([key, label]) => <button type="button" key={key} aria-pressed={tab === key} onClick={() => setTab(key)}>{label}</button>)}<button type="button" aria-pressed={tab === "BORDERS"} onClick={() => setTab("BORDERS")}>Recheios de borda</button></nav>
       {tab !== "BORDERS" && styled && <section className="pricing-category"><h3>Pizzas {kinds[tab].toLowerCase()}</h3>
-        {tab === "MIXED" && <p>Preço próprio para duas metades comum + premium, com o mesmo estilo e tamanho. A borda segue a regra da premium.</p>}
+        {tab === "MIXED" && <p>Preço próprio para duas metades comum + premium, com o mesmo estilo e tamanho. Borda salgada usa o valor de Comuns; borda doce usa o de Doces.</p>}
         {tab === "SWEET" && <p>Disponíveis somente na napolitana. Meio a meio apenas entre sabores doces.</p>}
         {(Object.keys(PIZZA_STYLES) as PizzaStyle[]).filter(style => tab !== "SWEET" || style === "NAPOLITANA").map(style => {
           const menu = rules.menus?.find(menu => menu.kind === tab && menu.style === style);
           const sizes = style === "TONDA_ROMANA" ? ["P", "M", "G"] as const : ["P", "M", "G", "GG"] as const;
-          const availableBorders = rules.borders.filter(border => border.active);
+          const availableBorders = rules.borders.filter(border => border.active && border.type === (tab === "SWEET" ? "SWEET" : "SAVORY"));
           return <fieldset className="style-price-card" key={style}><legend>{PIZZA_STYLES[style]}</legend>
             <div className="rule-sizes" style={{ gridTemplateColumns: `repeat(${sizes.length}, minmax(0, 1fr))` }}>{sizes.map(size => <label key={size}><span>{size}</span><PriceField label={`${kinds[tab]} ${PIZZA_STYLES[style]} ${size}`} value={menu?.sizes.find(entry => entry.size === size)?.price ?? null} onChange={price => updateMenu(tab, style, { sizes: [...(menu?.sizes ?? []).filter(entry => entry.size !== size), ...(price ? [{ size, price }] : [])] })} /></label>)}</div>
             <small>Tamanho sem preço fica indisponível. Nenhum valor será presumido.</small>
-            {style === "TONDA_ROMANA" ? <p className="style-policy">Sem borda recheada · tamanhos P, M e G</p> : tab === "MIXED" ? <p className="style-policy">Borda com os recheios e o acréscimo da premium napolitana.</p> : <div className="style-border-config">
+            {style === "TONDA_ROMANA" ? <p className="style-policy">Sem borda recheada · tamanhos P, M e G</p> : (tab === "MIXED" || tab === "PREMIUM") ? <p className="style-policy">Bordas salgadas usam os recheios e o acréscimo de Comuns. Bordas doces usam os de Doces, inclusive nas pizzas premium e meio a meio.</p> : <div className="style-border-config">
               <label className="style-border-toggle"><input type="checkbox" checked={menu?.borderMode === "PAID"} onChange={event => updateMenu(tab, style, { borderMode: event.target.checked ? "PAID" : "NONE", ...(!event.target.checked ? { borderPrice: null, borderIds: [] } : {}) })} /> Oferecer borda recheada</label>
-              {menu?.borderMode === "PAID" && <><label>Acréscimo da borda<PriceField label={`Borda ${kinds[tab]} ${PIZZA_STYLES[style]}`} value={menu.borderPrice} onChange={borderPrice => updateMenu(tab, style, { borderPrice })} /></label>
+              {menu?.borderMode === "PAID" && <><label>{tab === "SWEET" ? "Acréscimo da borda doce" : "Acréscimo da borda salgada"}<PriceField label={`Borda ${kinds[tab]} ${PIZZA_STYLES[style]}`} value={menu.borderPrice} onChange={borderPrice => updateMenu(tab, style, { borderPrice })} /></label>
                 {menu.borderPrice === null && <p className="pricing-alert">Preço pendente: a borda só aparecerá para o cliente depois de definir o acréscimo.</p>}
-                <p>Recheios disponíveis nesta categoria</p><div className="style-border-options">{availableBorders.map(border => <label key={border.id}><input type="checkbox" checked={menu.borderIds.includes(border.id)} onChange={event => updateMenu(tab, style, { borderIds: event.target.checked ? [...menu.borderIds, border.id] : menu.borderIds.filter(id => id !== border.id) })} /><span>{border.name}<small>{border.type === "SWEET" ? "Doce" : "Salgada"}</small></span></label>)}</div>
+                <p>Recheios disponíveis deste tipo</p><div className="style-border-options">{availableBorders.map(border => <label key={border.id}><input type="checkbox" checked={menu.borderIds.includes(border.id)} onChange={event => updateMenu(tab, style, { borderIds: event.target.checked ? [...menu.borderIds, border.id] : menu.borderIds.filter(id => id !== border.id) })} /><span>{border.name}<small>{border.type === "SWEET" ? "Doce" : "Salgada"}</small></span></label>)}</div>
                 {!availableBorders.length && <p className="pricing-alert">Cadastre as opções na aba “Recheios de borda” e selecione aqui quais serão oferecidas.</p>}
               </>}
             </div>}
@@ -54,10 +65,10 @@ export function PizzaRulesDialog({ onClose }: { onClose: () => void }) {
         })}
       </section>}
       {tab !== "BORDERS" && !styled && <section><p>Preços atuais por tamanho. A tabela por estilo será habilitada ao configurar as massas.</p>{(["traditional", "mixed"] as const).map(key => <fieldset key={key}><legend>{key === "traditional" ? "Comuns" : "Comum + premium"}</legend><div className="rule-sizes">{(["P", "M", "G", "GG"] as const).map(size => <label key={size}>{size}<PriceField label={`${key} ${size}`} value={rules[key].find(entry => entry.size === size)?.price ?? null} onChange={value => legacySizes(key, size, value)} /></label>)}</div></fieldset>)}</section>}
-      {tab === "BORDERS" && <section className="pricing-border-list"><h3>Recheios de borda</h3><p>{styled ? "Cadastre os nomes dos recheios e selecione as opções em cada categoria. O acréscimo é definido na categoria, sem repetir preços por recheio." : "Escolha opcional por pizza, com acréscimo."}</p>
+      {tab === "BORDERS" && <section className="pricing-border-list"><h3>Recheios de borda</h3><p>{styled ? "O tipo define a cobrança em todas as pizzas: Salgada usa o acréscimo de Comuns; Doce usa o de Doces. Marque os recheios disponíveis nessas duas abas." : "Escolha opcional por pizza, com acréscimo."}</p>
         {rules.borders.map((border, index) => <div className="border-rule" key={border.id}>
           <label>Recheio<input required maxLength={80} value={border.name} onChange={event => setRules(current => ({ ...current, borders: current.borders.map((row, i) => i === index ? { ...row, name: event.target.value } : row) }))} /></label>
-          <label>Tipo<select value={border.type} onChange={event => setRules(current => ({ ...current, borders: current.borders.map((row, i) => i === index ? { ...row, type: event.target.value as "SAVORY" | "SWEET" } : row) }))}><option value="SAVORY">Salgada</option><option value="SWEET">Doce</option></select></label>
+          <label>Tipo<select value={border.type} onChange={event => changeBorderType(border.id, event.target.value as "SAVORY" | "SWEET")}><option value="SAVORY">Salgada</option><option value="SWEET">Doce</option></select></label>
           {!styled && <label>Valor<PriceField label={`Preço borda ${border.name}`} value={border.price || null} onChange={price => setRules(current => ({ ...current, borders: current.borders.map((row, i) => i === index ? { ...row, price: price ?? 0 } : row) }))} /></label>}
           <button type="button" aria-label={`Excluir recheio ${border.name}`} onClick={() => setRules(current => ({ ...current, borders: current.borders.filter(row => row.id !== border.id), menus: current.menus?.map(menu => ({ ...menu, borderIds: menu.borderIds.filter(id => id !== border.id) })) }))}><Trash2 size={18} /></button>
         </div>)}<button type="button" className="add-border-filling" onClick={() => setRules(current => ({ ...current, borders: [...current.borders, { id: crypto.randomUUID(), name: "", type: "SAVORY", price: 0, active: true }] }))}><Plus size={16} /> Adicionar recheio</button>

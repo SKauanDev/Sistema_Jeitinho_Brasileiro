@@ -30,8 +30,8 @@ export function resolveStyledPizza(product: PizzaProduct, size: unknown, selecti
     ...flavors.map((flavor, index) => ({ name: flavor.name, group: `Pizza 1 · ${selection.mode === "whole" ? "sabor inteiro" : index === 0 ? "1ª metade" : "2ª metade"}`, price: 0 })),
   ];
   if (selection.borderId) {
-    const borderMenu = mixed ? find("PREMIUM") : menu;
     const border = rules.borders.find(border => border.id === selection.borderId && border.active);
+    const borderMenu = border ? find(border.type === "SWEET" ? "SWEET" : "TRADITIONAL") : undefined;
     if (!border || borderMenu?.borderMode !== "PAID" || borderMenu.borderPrice === null || !borderMenu.borderIds.includes(border.id)) throw new PizzaValidationError("Esta borda não está disponível para a pizza escolhida.");
     options.push({ name: border.name, group: "Borda · Pizza 1", price: borderMenu.borderPrice });
   }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Camera, ScanLine, X, RotateCcw, LoaderCircle } from "lucide-react";
 import { tablePathFromQr } from "../utils/table-qr";
+import { authorizeTableScan } from "../services/table-access";
 
 export function ScanTableButton({ className = "" }: { className?: string }) {
   const location = useLocation(), navigate = useNavigate();
@@ -18,15 +19,16 @@ export function TableScanner() {
     if (location.state?.qrScanner) navigate(-1);
     else { const params = new URLSearchParams(location.search); params.delete("leitor"); navigate({ pathname: location.pathname, search: params.toString() }, { replace: true, state: location.state }); }
   };
-  return <QRScannerDialog onClose={close} onRead={path => navigate(path, { replace: true, state: null })} />;
+  return <QRScannerDialog onClose={close} onRead={async (path, signal) => { await authorizeTableScan(path, signal); navigate(path, { replace: true, state: null }); }} />;
 }
 
-function QRScannerDialog({ onClose, onRead }: { onClose: () => void; onRead: (path: string) => void }) {
+function QRScannerDialog({ onClose, onRead }: { onClose: () => void; onRead: (path: string, signal: AbortSignal) => Promise<void> }) {
   const dialog = useRef<HTMLDialogElement>(null), video = useRef<HTMLVideoElement>(null);
   const handlers = useRef({ onRead, onClose }); handlers.current = { onRead, onClose };
-  const [attempt, setAttempt] = useState(0), [error, setError] = useState(""), [starting, setStarting] = useState(true), [paused, setPaused] = useState(false), [link, setLink] = useState("");
+  const [attempt, setAttempt] = useState(0), [error, setError] = useState(""), [starting, setStarting] = useState(true), [paused, setPaused] = useState(false), [validating, setValidating] = useState(false);
   useEffect(() => { const element = dialog.current!; element.showModal(); return () => { if (element.open) element.close(); }; }, []);
   useEffect(() => {
+    const authorization = new AbortController();
     let cancelled = false, done = false, stream: MediaStream | null = null, frame = 0, lastFrame = 0;
     const stop = () => { cancelAnimationFrame(frame); stream?.getTracks().forEach(track => track.stop()); if (video.current?.srcObject === stream) video.current.srcObject = null; };
     const pause = () => { if (document.visibilityState === "hidden") { stop(); setPaused(true); setStarting(false); } };
@@ -56,7 +58,13 @@ function QRScannerDialog({ onClose, onRead }: { onClose: () => void; onRead: (pa
             const qr = decoder.default(pixels.data, pixels.width, pixels.height, { inversionAttempts: "dontInvert" });
             if (qr) {
               const path = tablePathFromQr(qr.data, window.location.origin);
-              if (path) { done = true; stop(); handlers.current.onRead(path); return; }
+              if (path) {
+                done = true; stop(); setValidating(true);
+                void handlers.current.onRead(path, authorization.signal).catch(reason => {
+                  if (!cancelled) setError(reason instanceof Error ? reason.message : "Não foi possível validar a comanda. Escaneie novamente.");
+                }).finally(() => { if (!cancelled) setValidating(false); });
+                return;
+              }
               setError("Este QR não é de uma comanda deste restaurante. Aponte para o QR da mesa.");
             }
           }
@@ -67,12 +75,12 @@ function QRScannerDialog({ onClose, onRead }: { onClose: () => void; onRead: (pa
         done = true;
         stop(); if (cancelled) return;
         const name = reason instanceof Error ? reason.name : "";
-        setError(name === "NotAllowedError" ? "Permita o acesso à câmera no navegador para escanear a mesa." : name === "NotFoundError" ? "Nenhuma câmera foi encontrada neste dispositivo." : name === "NotReadableError" ? "A câmera está sendo usada por outro aplicativo. Feche-o e tente novamente." : "Não foi possível abrir a câmera. Use HTTPS ou cole o link da comanda abaixo.");
+        setError(name === "NotAllowedError" ? "Permita o acesso à câmera no navegador para escanear a mesa." : name === "NotFoundError" ? "Nenhuma câmera foi encontrada neste dispositivo." : name === "NotReadableError" ? "A câmera está sendo usada por outro aplicativo. Feche-o e tente novamente." : "Não foi possível abrir a câmera. Verifique a permissão e use o sistema por HTTPS.");
         setStarting(false);
       }
     };
     document.addEventListener("visibilitychange", pause); void start();
-    return () => { cancelled = true; document.removeEventListener("visibilitychange", pause); stop(); };
+    return () => { cancelled = true; authorization.abort(); document.removeEventListener("visibilitychange", pause); stop(); };
   }, [attempt]);
 
   return <dialog ref={dialog} className="table-scanner-dialog" aria-labelledby="table-scanner-title" onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => event.target === event.currentTarget && onClose()}>
@@ -81,6 +89,6 @@ function QRScannerDialog({ onClose, onRead }: { onClose: () => void; onRead: (pa
     <div className="table-camera-preview"><video ref={video} autoPlay muted playsInline aria-label="Câmera para leitura do QR code" /><div className="table-camera-frame" aria-hidden="true" />{starting && <div className="table-camera-state"><LoaderCircle className="spinner" size={26} /><span>Abrindo câmera...</span></div>}{paused && <div className="table-camera-state"><Camera size={28} /><span>Leitura pausada</span></div>}</div>
     {error && <p className="table-scanner-error" role="alert">{error}</p>}
     {(error || paused) && <button className="table-camera-retry" type="button" onClick={() => setAttempt(value => value + 1)}><RotateCcw size={17} /> {paused ? "Retomar câmera" : "Tentar novamente"}</button>}
-    <details className="table-scanner-link"><summary>Tenho o link da comanda</summary><form onSubmit={event => { event.preventDefault(); const path = tablePathFromQr(link, window.location.origin); if (path) onRead(path); else setError("Cole um link válido de comanda deste restaurante."); }}><label>Link da mesa<input type="url" value={link} onChange={event => setLink(event.target.value)} placeholder="https://.../mesa/..." required /></label><button type="submit">Abrir comanda</button></form></details>
+    {validating && <p role="status"><LoaderCircle className="spinner" size={18} /> Validando comanda...</p>}
   </dialog>;
 }

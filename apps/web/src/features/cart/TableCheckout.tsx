@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ArrowLeft, ChefHat, MessageSquareText, LoaderCircle, UtensilsCrossed } from "lucide-react";
 import { API_URL } from "../../services/admin-api";
+import { tableAccessHeaders } from "../../services/table-access";
 import type { CheckoutItem } from "./CheckoutForm";
 import { PIZZA_STYLES, type PizzaStyle } from "../../services/pizza-rules";
 export type TableContext = { key: string; sessionId: string; number: number };
@@ -9,7 +10,7 @@ export function TableCheckout({ table, items, subtotal, notes, onNotesChange, on
   return <form className="checkout-form table-checkout" onSubmit={async event => {
     event.preventDefault(); if (loading) return; setLoading(true); setError("");
     try {
-      const response = await fetch(`${API_URL}/orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ table: { key: table.key, sessionId: table.sessionId }, items, notes }) });
+      const response = await fetch(`${API_URL}/orders`, { method: "POST", headers: { "Content-Type": "application/json", ...tableAccessHeaders(table.key) }, body: JSON.stringify({ table: { key: table.key, sessionId: table.sessionId }, items, notes }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message ?? "Não foi possível enviar.");
       onComplete();

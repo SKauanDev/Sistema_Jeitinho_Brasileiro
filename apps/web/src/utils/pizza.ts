@@ -18,15 +18,16 @@ export function selectedPizzaMenu(product: Product, selections: PizzaSelection[]
   const kind = kinds.includes("PREMIUM") && kinds.includes("TRADITIONAL") ? "MIXED" : kinds[0] ?? pizzaKind(product.category);
   return rules.menus?.find(menu => menu.style === style && menu.kind === kind);
 }
-export function pizzaBorderMenu(menu: PizzaMenu | undefined, rules: PizzaRules) {
-  return menu?.kind === "MIXED" ? rules.menus?.find(row => row.kind === "PREMIUM" && row.style === menu.style) : menu;
+export function pizzaBorderMenu(menu: PizzaMenu | undefined, rules: PizzaRules, type: "SAVORY" | "SWEET" = "SAVORY") {
+  return rules.menus?.find(row => row.kind === (type === "SWEET" ? "SWEET" : "TRADITIONAL") && row.style === menu?.style);
 }
 export function configuredBorderPrice(product: Product, selections: PizzaSelection[], flavors: Product[], rules: PizzaRules, style?: PizzaStyle) {
   if (rules.menus?.length && isPizzaFlavor(product)) {
-    const menu = pizzaBorderMenu(selectedPizzaMenu(product, selections, flavors, rules, style), rules);
     return selections.reduce((sum, pizza) => {
       if (!pizza.borderId) return sum;
-      return menu?.borderMode === "PAID" && menu.borderPrice !== null && menu.borderIds.includes(pizza.borderId) && rules.borders.some(border => border.id === pizza.borderId && border.active) ? sum + menu.borderPrice : NaN;
+      const border = rules.borders.find(border => border.id === pizza.borderId && border.active);
+      const menu = border && pizzaBorderMenu(selectedPizzaMenu(product, selections, flavors, rules, style), rules, border.type);
+      return border && menu?.borderMode === "PAID" && menu.borderPrice !== null && menu.borderIds.includes(border.id) ? sum + menu.borderPrice : NaN;
     }, 0);
   }
   return selections.reduce((sum, pizza) => sum + (rules.borders.find(border => border.id === pizza.borderId && border.active)?.price ?? 0), 0);

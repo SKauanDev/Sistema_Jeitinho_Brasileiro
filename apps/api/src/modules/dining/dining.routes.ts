@@ -7,6 +7,7 @@ import { requireAuth, requireAdmin } from "../../shared/auth.middleware.js";
 import { createRateLimit } from "../../shared/http-security.js";
 import { getStoreSetting, effectiveStoreStatus } from "../settings/store-operation.service.js";
 import { ADMIN_ROOM } from "../../realtime/socket-security.js";
+import { DINING_DENIED, issueDiningAccess, matchesDiningSession, readDiningAccess, scannerOriginAllowed } from "./dining-access.js";
 
 export const adminDiningRouter = Router();
 adminDiningRouter.use(requireAuth, requireAdmin);
@@ -32,19 +33,35 @@ async function summary(table: Model, existingOrders?: Model[]) {
 }
 export function createDiningRouter(isOpen = effectiveStoreStatus, tableCount?: number) {
 const diningRouter = Router();
+diningRouter.use((_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
+diningRouter.post("/scan", createRateLimit(300, 10 * 60_000), async (req, res) => {
+  if (!scannerOriginAllowed(req)) { res.status(403).json({ message: DINING_DENIED }); return; }
+  const table = typeof req.body?.key === "string" ? await publicTable(req.body.key, tableCount) : null;
+  if (!table) { res.status(404).json({ message: "Mesa indisponível. Consulte a equipe." }); return; }
+  res.json({ accessToken: issueDiningAccess(req.body.key, table.getDataValue("sessionId") ?? null) });
+});
+diningRouter.use("/:key", (req, res, next) => {
+  const access = readDiningAccess(req, req.params.key);
+  if (!access) { res.status(403).json({ message: DINING_DENIED }); return; }
+  res.locals.diningAccess = access;
+  next();
+});
 diningRouter.get("/:key", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const table = await publicTable(String(req.params.key), tableCount);
   if (!table) { res.status(404).json({ message: "Mesa indisponível. Consulte a equipe." }); return; }
-  res.json(await summary(table));
+  if (!matchesDiningSession(res.locals.diningAccess, table.getDataValue("sessionId"))) { res.status(403).json({ message: DINING_DENIED }); return; }
+  res.json({ ...await summary(table), ...(res.locals.diningAccess.sessionId === null && table.getDataValue("sessionId") ? { accessToken: issueDiningAccess(String(req.params.key), table.getDataValue("sessionId")) } : {}) });
 });
 diningRouter.post("/:key/open", createRateLimit(300, 10 * 60_000), async (req, res) => {
   const setting = await getStoreSetting();
   if (!await isOpen(setting)) { res.status(409).json({ message: "A loja está fechada no momento." }); return; }
   const found = await publicTable(String(req.params.key), tableCount);
   if (!found) { res.status(404).json({ message: "Mesa indisponível." }); return; }
+  if (!matchesDiningSession(res.locals.diningAccess, found.getDataValue("sessionId"))) { res.status(403).json({ message: DINING_DENIED }); return; }
   const table = await sequelize.transaction(async transaction => {
     const table = (await DiningTable.findByPk(found.getDataValue("id"), { transaction, lock: transaction.LOCK.UPDATE }))!;
+    if (!table || !matchesDiningSession(res.locals.diningAccess, table.getDataValue("sessionId"))) return null;
     if (Number(table.getDataValue("number")) > (tableCount ?? Number((await getStoreSetting()).getDataValue("tableCount")))) return null;
     if (!table.getDataValue("sessionId")) {
       const session = await DiningSession.create({ tableId: table.getDataValue("id") }, { transaction });
@@ -53,7 +70,7 @@ diningRouter.post("/:key/open", createRateLimit(300, 10 * 60_000), async (req, r
     return table;
   });
   if (!table) { res.status(409).json({ message: "Esta mesa foi desativada. Consulte a equipe." }); return; }
-  res.json(await summary(table));
+  res.json({ ...await summary(table), accessToken: issueDiningAccess(String(req.params.key), table.getDataValue("sessionId")) });
 });
 return diningRouter;
 }
@@ -76,6 +93,12 @@ adminDiningRouter.get("/", async (_req, res) => {
     bySession.set(id, [...(bySession.get(id) ?? []), order]);
   }
   res.json({ count, tables: await Promise.all(tables.map(async table => ({ id: table.getDataValue("id"), key: table.getDataValue("accessKey"), ...await summary(table, bySession.get(String(table.getDataValue("sessionId"))) ?? []) }))) });
+});
+adminDiningRouter.post("/:id/access", async (req, res) => {
+  const table = await DiningTable.findByPk(String(req.params.id));
+  if (!table || Number(table.getDataValue("number")) > Number((await getStoreSetting()).getDataValue("tableCount"))) { res.status(404).json({ message: "Mesa indisponível." }); return; }
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ accessToken: issueDiningAccess(table.getDataValue("accessKey"), table.getDataValue("sessionId") ?? null) });
 });
 adminDiningRouter.put("/count", async (req, res) => {
   const count = req.body.count;

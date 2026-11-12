@@ -290,7 +290,8 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
     if (flavorAlreadyChosen(selection, flavorId)) { setFlavorNotice("Esse sabor já foi escolhido"); return; }
     if (selected && rules.menus?.length && isPizzaFlavor(selected)) {
       const next = { ...selection, ...(selection.mode === "whole" || activePizzaHalf === "left" ? { leftId: flavorId } : { rightId: flavorId }) };
-      const menu = pizzaBorderMenu(selectedPizzaMenu(selected, [next], pizzaFlavors, rules, selectedStyle), rules);
+      const border = rules.borders.find(border => border.id === next.borderId);
+      const menu = pizzaBorderMenu(selectedPizzaMenu(selected, [next], pizzaFlavors, rules, selectedStyle), rules, border?.type);
       if (next.borderId && (menu?.borderMode !== "PAID" || menu.borderPrice === null || !menu.borderIds.includes(next.borderId))) updatePizzaSelection({ borderId: undefined });
     }
     setFlavorNotice("");
@@ -308,9 +309,9 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
   const selectedStyles = selected ? stylesForProduct(selected, rules) : [];
   const availableFlavors = pizzaFlavors.filter(flavor => (!selected || !isPizzaFlavor(selected) || compatibleFlavors(selected, flavor)) && (styledPizza ? !!selectedStyle && !!selectedSize && sizesForStyle(flavor, rules, selectedStyle).some(entry => entry.size === selectedSize) : selectedSize ? flavor.sizes?.some(entry => entry.size === selectedSize) : !selected?.sizes?.length && (!selected || !isPizzaFlavor(selected) || !flavor.sizes?.length))).filter(flavor => { const selection = pizzaSelections[activePizzaSlot]; const other = pizzaFlavors.find(row => row.id === (activePizzaHalf === "left" ? selection?.rightId : selection?.leftId)); return selection?.mode !== "half" || !other || compatibleFlavors(other, flavor); });
   const selectedUnitPrice = selected ? configuredPizzaPrice(selected, selectedSize, pizzaSelections, pizzaFlavors, rules, selectedStyle) + configuredBorderPrice(selected, pizzaSelections, pizzaFlavors, rules, selectedStyle) : 0;
-  const borderMenu = selected && styledPizza ? pizzaBorderMenu(selectedPizzaMenu(selected, pizzaSelections, pizzaFlavors, rules, selectedStyle), rules) : undefined;
-  const availableBorders = rules.borders.filter(border => border.active && (styledPizza ? borderMenu?.borderMode === "PAID" && borderMenu.borderPrice !== null && borderMenu.borderIds.includes(border.id) : !rules.menus?.length || border.price > 0));
-  const borderPrice = (id: string) => styledPizza ? borderMenu?.borderPrice ?? 0 : rules.borders.find(border => border.id === id)?.price ?? 0;
+  const borderMenu = (type: "SAVORY" | "SWEET") => selected && styledPizza ? pizzaBorderMenu(selectedPizzaMenu(selected, pizzaSelections, pizzaFlavors, rules, selectedStyle), rules, type) : undefined;
+  const availableBorders = rules.borders.filter(border => { const menu = borderMenu(border.type); return border.active && (styledPizza ? menu?.borderMode === "PAID" && menu.borderPrice !== null && menu.borderIds.includes(border.id) : !rules.menus?.length || border.price > 0); });
+  const borderPrice = (id: string) => { const border = rules.borders.find(border => border.id === id); return styledPizza && border ? borderMenu(border.type)?.borderPrice ?? 0 : border?.price ?? 0; };
   const modalTotal = selected
     ? (selectedUnitPrice + selectedExtras.reduce((sum, extra) => sum + extra.price, 0)) * quantity
     : 0;

@@ -13,7 +13,8 @@ import { createOrderRouter } from "./order.routes.js";
 test("MySQL/HTTP: preço por massa e borda é calculado no servidor; pedido guarda estilo, tamanho e recheio", { skip: process.env.RUN_DB_STYLE_TESTS !== "true", timeout: 30000 }, async () => {
   const categoryId = randomUUID(), productId = randomUUID(), borderId = randomUUID(), phone = `329${String(Date.now()).slice(-8)}`;
   const base = await getStoreSetting();
-  const borders = [{ id: borderId, name: "Recheio QA temporário", type: "SAVORY" as const, price: .01, active: true }];
+  const sweetBorderId = randomUUID();
+  const borders = [{ id: borderId, name: "Recheio QA temporário", type: "SAVORY" as const, price: .01, active: true }, { id: sweetBorderId, name: "Recheio doce QA temporário", type: "SWEET" as const, price: .01, active: true }];
   const setting = StoreSetting.build({ ...base.get({ plain: true }), allowPickup: true, cashEnabled: true, minimumOrder: 0, pizzaRules: { ...emptyPizzaRules(), borders, menus: initialStyleMenus(borders) } });
   const app = express(); app.use(express.json()); app.use("/orders", createOrderRouter({ isOpen: async () => true, settings: async () => setting }));
   const server = app.listen(0, "127.0.0.1"); await once(server, "listening");
@@ -35,6 +36,12 @@ test("MySQL/HTTP: preço por massa e borda é calculado no servidor; pedido guar
     assert.equal(options.filter(option => option.getDataValue("optionGroupName") === "Estilo da massa").length, 1);
     assert.ok(options.some(option => option.getDataValue("optionName") === "Napolitana"));
     assert.ok(options.some(option => option.getDataValue("optionName") === "Recheio QA temporário" && Number(option.getDataValue("priceDelta")) === 15));
+    const dessertBorder = await send({ ...item, pizzaSelections: [{ mode: "whole", leftId: productId, borderId: sweetBorderId }] });
+    assert.equal(dessertBorder.status, 201);
+    const dessertOrder = await Order.findByPk((await dessertBorder.json()).id); assert.ok(dessertOrder);
+    assert.equal(Number(dessertOrder.getDataValue("subtotal")), 101.8);
+    const dessertItem = await OrderItem.findOne({ where: { orderId: dessertOrder.getDataValue("id") } }); assert.ok(dessertItem);
+    assert.equal(Number(dessertItem.getDataValue("optionsTotal")), 18);
     const tonda = await send({ ...item, style: "TONDA_ROMANA", size: "M", pizzaSelections: [{ mode: "whole", leftId: productId }] }); assert.equal(tonda.status, 201);
     const roman = await Order.findByPk((await tonda.json()).id); assert.equal(Number(roman!.getDataValue("subtotal")), 100);
   } finally {

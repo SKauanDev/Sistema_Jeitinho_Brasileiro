@@ -33,7 +33,8 @@ test("bordas cobram 15 na comum e 18 na doce; preço antigo do recheio não inte
   assert.equal(normal.unitPrice, 32.9); assert.equal(normal.options.at(-1)!.price, 15);
   const dessert = resolvePizzaConfiguration(sweet, "GG", whole(sweet.id, sweetBorder.id), all, rules(), "NAPOLITANA");
   assert.equal(dessert.unitPrice, 77); assert.equal(dessert.options.at(-1)!.price, 18);
-  assert.throws(() => resolvePizzaConfiguration(common, "P", whole(common.id, sweetBorder.id), all, rules(), "NAPOLITANA"), /borda/);
+  assert.equal(resolvePizzaConfiguration(common, "P", whole(common.id, sweetBorder.id), all, rules(), "NAPOLITANA").options.at(-1)!.price, 18);
+  assert.equal(resolvePizzaConfiguration(sweet, "P", whole(sweet.id, savory.id), all, rules(), "NAPOLITANA").options.at(-1)!.price, 15);
 });
 test("bloqueia estilo ausente, tonda GG, doce tonda e borda tonda", () => {
   assert.throws(() => resolvePizzaConfiguration(common, "G", whole(common.id), all, rules()), /estilo/);
@@ -41,17 +42,22 @@ test("bloqueia estilo ausente, tonda GG, doce tonda e borda tonda", () => {
   assert.throws(() => resolvePizzaConfiguration(sweet, "P", whole(sweet.id), all, rules(), "TONDA_ROMANA"), /disponível/);
   assert.throws(() => resolvePizzaConfiguration(common, "P", whole(common.id, savory.id), all, rules(), "TONDA_ROMANA"), /borda/);
 });
-test("premium sem preço de borda permite pizza simples e recusa borda; cadastro posterior usa o acréscimo correto", () => {
+test("premium usa o preço do tipo da borda, ignorando o acréscimo premium antigo", () => {
   assert.equal(resolvePizzaConfiguration(premium, "P", whole(premium.id), all, rules(), "NAPOLITANA").unitPrice, 49);
-  assert.throws(() => resolvePizzaConfiguration(premium, "P", whole(premium.id, savory.id), all, rules(), "NAPOLITANA"), /borda/);
+  assert.equal(resolvePizzaConfiguration(premium, "P", whole(premium.id, savory.id), all, rules(), "NAPOLITANA").options.at(-1)!.price, 15);
   const configured = rules(); configured.menus.find(menu => menu.kind === "PREMIUM" && menu.style === "NAPOLITANA")!.borderPrice = 20;
-  assert.equal(resolvePizzaConfiguration(premium, "P", whole(premium.id, savory.id), all, configured, "NAPOLITANA").options.at(-1)!.price, 20);
+  assert.equal(resolvePizzaConfiguration(premium, "P", whole(premium.id, savory.id), all, configured, "NAPOLITANA").options.at(-1)!.price, 15);
+  assert.equal(resolvePizzaConfiguration(premium, "P", whole(premium.id, sweetBorder.id), all, configured, "NAPOLITANA").options.at(-1)!.price, 18);
+  configured.menus.find(menu => menu.kind === "SWEET" && menu.style === "NAPOLITANA")!.borderPrice = null;
+  assert.throws(() => resolvePizzaConfiguration(common, "P", whole(common.id, sweetBorder.id), all, configured, "NAPOLITANA"), /borda/);
 });
 test("meio a meio comum/premium só libera com tabela própria; doce continua restrito à categoria", () => {
   const half = [{ mode: "half" as const, leftId: common.id, rightId: premium.id }];
   assert.throws(() => resolvePizzaConfiguration(common, "G", half, all, rules(), "NAPOLITANA"), /combinação/);
   const configured = rules(); configured.menus.find(menu => menu.kind === "MIXED" && menu.style === "NAPOLITANA")!.sizes = [{ size: "G", price: 91.5 }];
   assert.equal(resolvePizzaConfiguration(common, "G", half, all, configured, "NAPOLITANA").unitPrice, 91.5);
+  assert.equal(resolvePizzaConfiguration(common, "G", [{ ...half[0], borderId: savory.id }], all, configured, "NAPOLITANA").options.at(-1)!.price, 15);
+  assert.equal(resolvePizzaConfiguration(common, "G", [{ ...half[0], borderId: sweetBorder.id }], all, configured, "NAPOLITANA").options.at(-1)!.price, 18);
   assert.throws(() => resolvePizzaConfiguration(common, "G", [{ mode: "half", leftId: common.id, rightId: sweet.id }], all, configured, "NAPOLITANA"), /doce/);
   assert.equal(resolvePizzaConfiguration(sweet, "M", [{ mode: "half", leftId: sweet.id, rightId: otherSweet.id }], all, configured, "NAPOLITANA").unitPrice, 54);
 });
