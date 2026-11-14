@@ -1,3 +1,4 @@
+import { isCounterPayment, isPaymentWaiting } from "../order-status/order-presentation";
 import { finishedOrderLabel, orderFinishedAt, orderIsFinished } from "../../utils/order-age";
 import { OrderEditDialog } from "./OrderEditDialog";
 import { ManualOrderDialog } from "./ManualOrderDialog";
@@ -255,7 +256,7 @@ export function OrdersKanbanModule() {
       <div className="kanban-board operational">
         {columns.map((column) => {
           const items = orders.filter(
-            (order) => order.status === column.status && (column.status === "CANCELED" || ["APPROVED", "NOT_REQUIRED"].includes(order.paymentStatus ?? "NOT_REQUIRED")),
+            (order) => order.status === column.status && !isPaymentWaiting(order),
           );
           return (
             <section
@@ -301,9 +302,9 @@ export function OrdersKanbanModule() {
           );
         })}
       </div>
-      {orders.some(order => !["CANCELED", "COMPLETED"].includes(order.status) && !["APPROVED", "NOT_REQUIRED"].includes(order.paymentStatus ?? "NOT_REQUIRED")) && <section className="pending-payment-orders">
+      {orders.some(order => isPaymentWaiting(order)) && <section className="pending-payment-orders">
         <header><h2>Aguardando pagamento</h2><p>Pedidos registrados, ainda não liberados para preparo.</p></header>
-        <div>{orders.filter(order => !["CANCELED", "COMPLETED"].includes(order.status) && !["APPROVED", "NOT_REQUIRED"].includes(order.paymentStatus ?? "NOT_REQUIRED")).map(order => <article key={order.id}><button onClick={() => setSelected(order)}><strong>#{order.displayNumber} · {order.customerName}</strong><span>{order.items?.map(item => `${item.quantity}× ${item.productName}`).join(" · ")}</span><small>{order.paymentStatus === "REJECTED" ? "Pagamento recusado" : order.paymentStatus === "EXPIRED" ? "Pagamento expirado" : "Pagamento pendente"} · {currency(order.total)}</small></button><button onClick={() => void changeStatus(order, "CANCELED")} aria-label={`Cancelar pedido ${order.displayNumber}`}><XCircle /> Cancelar</button></article>)}</div>
+        <div>{orders.filter(order => isPaymentWaiting(order)).map(order => <article key={order.id}><button onClick={() => setSelected(order)}><strong>#{order.displayNumber} · {order.customerName}</strong><span>{order.items?.map(item => `${item.quantity}× ${item.productName}`).join(" · ")}</span><small>{order.paymentStatus === "REJECTED" ? "Pagamento recusado" : order.paymentStatus === "EXPIRED" ? "Pagamento expirado" : "Pagamento pendente"} · {currency(order.total)}</small></button><button onClick={() => void changeStatus(order, "CANCELED")} aria-label={`Cancelar pedido ${order.displayNumber}`}><XCircle /> Cancelar</button></article>)}</div>
       </section>}
       {editing && <OrderEditDialog order={editing} onClose={() => setEditing(null)} onSaved={updated => { setOrders(current => current.map(order => order.id === updated.id ? updated : order)); setSelected(updated); setEditing(null); }} />}
       {selected && (
@@ -496,7 +497,7 @@ function OrderDetails({
               <span>Forma de pagamento</span>
               <b>{paymentLabel(order.paymentMethod)}</b>
             </div>
-            <div><span>Status do pagamento</span><b>{order.paymentStatus === "APPROVED" ? "Confirmado" : order.paymentStatus === "PENDING" ? "Aguardando pagamento" : order.paymentStatus === "REJECTED" ? "Recusado" : order.paymentStatus === "EXPIRED" ? "Expirado" : "Pagamento na entrega/retirada"}</b></div>
+            <div><span>Status do pagamento</span><b>{isCounterPayment(order) && order.paymentStatus !== "APPROVED" ? "Forma de pagamento registrada" : order.paymentStatus === "APPROVED" ? "Confirmado" : order.paymentStatus === "PENDING" ? "Aguardando pagamento" : order.paymentStatus === "REJECTED" ? "Recusado" : order.paymentStatus === "EXPIRED" ? "Expirado" : "Pagamento na entrega/retirada"}</b></div>
             <div className="total">
               <span>Total</span>
               <b>{currency(order.total)}</b>
@@ -517,7 +518,7 @@ function OrderDetails({
               <XCircle /> Cancelar
             </button>
           )}
-          {nextStatus[order.status] && ["APPROVED", "NOT_REQUIRED"].includes(order.paymentStatus ?? "NOT_REQUIRED") && (
+          {nextStatus[order.status] && !isPaymentWaiting(order) && (
             <button
               className="advance-order"
               onClick={() => onChangeStatus(order.tableNumber && order.status === "READY" ? "COMPLETED" : nextStatus[order.status]!)}

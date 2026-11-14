@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { isCounterPayment } from "../orders/payment-policy.js";
 import { Op } from "sequelize";
 import { Courier, DiningSession, DiningTable, Order, OrderEdit, OrderItem, OrderItemOption, OrderStatusHistory, Product } from "../../database/models.js";
 import { sequelize } from "../../database/sequelize.js";
@@ -76,10 +77,11 @@ orderEditRouter.patch("/:id", async (req, res) => {
         const created = await OrderItem.create({ orderId, ...fields }, { transaction });
         for (const option of options) await OrderItemOption.create({ orderItemId: created.getDataValue("id"), ...option }, { transaction });
       }
+      const paymentStatus = isCounterPayment(input.paymentMethod) && input.paymentStatus !== "APPROVED" ? "NOT_REQUIRED" : input.paymentStatus;
       const changes: Record<string, unknown> = { subtotal, discountAmount, digitalSecurityFee, deliveryFee, serviceFee: waiterFee, serviceFeeAccepted: input.serviceFeeAccepted === true, total,
-        status: input.status, fulfillmentType: target ? "PICKUP" : input.fulfillmentType, paymentMethod: input.paymentMethod, paymentStatus: input.paymentStatus,
+        status: input.status, fulfillmentType: target ? "PICKUP" : input.fulfillmentType, paymentMethod: input.paymentMethod, paymentStatus,
         paymentProvider: "MANUAL", paymentExpiresAt: null, paymentExternalId: null, paymentCheckoutUrl: null, pixCopyPaste: null, pixQrCodeBase64: null,
-        paidAt: input.paymentStatus === "APPROVED" ? order.getDataValue("paidAt") ?? new Date() : null,
+        paidAt: paymentStatus === "APPROVED" ? order.getDataValue("paidAt") ?? new Date() : null,
         completedAt: input.status === "COMPLETED" ? order.getDataValue("completedAt") ?? new Date() : null,
         cancellationReason: input.status === "CANCELED" ? reason : null,
         inventoryRevision: Number(order.getDataValue("inventoryRevision")) + 1, inventoryProcessedAt: null, inventoryRevertedAt: null,
@@ -90,7 +92,7 @@ orderEditRouter.patch("/:id", async (req, res) => {
       for (const [key, max] of Object.entries({ customerName: 120, customerPhone: 30, customerEmail: 254, customerDocument: 14, notes: 2000, street: 180, number: 30, complement: 120, neighborhood: 120, city: 120, state: 2, postalCode: 12, addressReference: 255, couponCode: 50 })) changes[key] = text(input[key] ?? "", max, key === "customerName");
       changes.changeFor = input.changeFor == null ? null : money(input.changeFor);
       await order.update(changes, { transaction });
-      if (input.status !== "CANCELED" && ["APPROVED", "NOT_REQUIRED"].includes(input.paymentStatus)) await applyOrderInventory(orderId, transaction);
+      if (input.status !== "CANCELED" && ["APPROVED", "NOT_REQUIRED"].includes(paymentStatus)) await applyOrderInventory(orderId, transaction);
       if (before.status !== input.status) await OrderStatusHistory.create({ orderId, status: input.status }, { transaction });
       for (const session of sessions) {
         if (!session.getDataValue("closedAt")) continue;

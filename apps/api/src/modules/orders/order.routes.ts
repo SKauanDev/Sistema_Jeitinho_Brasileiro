@@ -1,4 +1,5 @@
 import { PizzaValidationError } from "../catalog/pizza-sizes.js";
+import { isCounterPayment } from "./payment-policy.js";
 import { resolvePizzaConfiguration, type PizzaSelection, type PizzaProduct } from "./pizza-configuration.js";
 import { readPizzaRules } from "../catalog/pizza-rules.js";
 import { lockedTable } from "../dining/dining.routes.js";
@@ -304,7 +305,7 @@ orderRouter.post("/", async (request, response) => {
           paymentMethod: payload.paymentMethod,
           paymentProvider: "MANUAL", paymentExpiresAt: null,
           paidAt: payload.paymentMethod === "RECEIVED_ONLINE" ? new Date() : null,
-          paymentStatus: payload.paymentMethod === "RECEIVED_ONLINE" ? "APPROVED" : payload.table || ["CASH", "CREDIT_CARD", "DEBIT_CARD"].includes(payload.paymentMethod!) ? "NOT_REQUIRED" : "PENDING",
+          paymentStatus: payload.paymentMethod === "RECEIVED_ONLINE" ? "APPROVED" : payload.table || isCounterPayment(payload.paymentMethod) ? "NOT_REQUIRED" : "PENDING",
           couponCode: couponResult?.code ?? null,
           discountAmount,
           changeFor:
@@ -390,17 +391,12 @@ orderRouter.post("/", async (request, response) => {
       detail.includes("cidade e UF") ||
       detail.includes("Pedido mínimo");
     const diningError = /comanda|Comanda/.test(detail);
-    const paymentFailure = ["PIX", "CREDIT_CARD", "DEBIT_CARD"].includes(
-      String(payload.paymentMethod),
-    );
     const message =
       expected || operational || invalidPizza || diningError
         ? detail
-        : paymentFailure && detail
-          ? `Falha no pagamento: ${detail}`
-          : "Não foi possível registrar o pedido.";
+        : "Não foi possível registrar o pedido.";
     response
-      .status(invalidPizza ? 400 : expected || operational || diningError ? 409 : paymentFailure ? 502 : 500)
+      .status(invalidPizza ? 400 : expected || operational || diningError ? 409 : 500)
       .json({ message });
   }
 });

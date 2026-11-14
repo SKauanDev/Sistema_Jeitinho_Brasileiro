@@ -1,4 +1,5 @@
 import { isDeveloper } from "../../shared/developer.middleware.js";
+import { isCounterPayment } from "../orders/payment-policy.js";
 import { Op, QueryTypes } from "sequelize";
 import { Router } from "express";
 import type { Server } from "socket.io";
@@ -257,7 +258,7 @@ adminRouter.patch("/orders/:id/status", async (request, response) => {
     return;
   }
   const current = String(order.getDataValue("status")) as OrderStatus;
-  if (status !== "CANCELED" && !["NOT_REQUIRED", "APPROVED"].includes(String(order.getDataValue("paymentStatus")))) {
+  if (status !== "CANCELED" && !isCounterPayment(order.getDataValue("paymentMethod"), order.getDataValue("paymentProvider")) && !["NOT_REQUIRED", "APPROVED"].includes(String(order.getDataValue("paymentStatus")))) {
     response.status(409).json({ message: "Aguarde a confirmação do pagamento antes de avançar o pedido." }); return;
   }
   if (!ORDER_TRANSITIONS[current]?.includes(status)) {
@@ -281,6 +282,9 @@ adminRouter.patch("/orders/:id/status", async (request, response) => {
     }
     await order.reload({ transaction, lock: transaction.LOCK.UPDATE });
     if (!ORDER_TRANSITIONS[String(order.getDataValue("status")) as OrderStatus]?.includes(status)) return "O pedido foi atualizado por outra pessoa. Atualize a central.";
+    const counterPayment = isCounterPayment(order.getDataValue("paymentMethod"), order.getDataValue("paymentProvider"));
+    if (status !== "CANCELED" && !counterPayment && !["NOT_REQUIRED", "APPROVED"].includes(String(order.getDataValue("paymentStatus")))) return "Aguarde a confirmação do pagamento antes de avançar o pedido.";
+    if (counterPayment && order.getDataValue("paymentStatus") !== "APPROVED") await order.update({ paymentStatus: "NOT_REQUIRED", paymentExpiresAt: null }, { transaction });
     await order.update(
       {
         status,

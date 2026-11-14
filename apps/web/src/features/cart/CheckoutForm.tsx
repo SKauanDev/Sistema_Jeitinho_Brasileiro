@@ -610,7 +610,6 @@ export function CheckoutForm({
           </label>
         )}
       </section>
-      {paymentMethod !== "CASH" && <p className="table-payment-note">O pagamento será conferido pela equipe. Este pedido não gera cobrança automática.</p>}
       {error && <p className="checkout-error">{error}</p>}
       <div className="checkout-totals">
         <div>

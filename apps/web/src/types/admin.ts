@@ -18,6 +18,7 @@ export type Order = {
   tableNumber?: number | null;
   diningSessionId?: string | null;
   paymentStatus?: "NOT_REQUIRED" | "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+  paymentProvider?: string | null;
   id: string; displayNumber: string; status: OrderStatus; fulfillmentType: "PICKUP" | "DELIVERY";
   customerName: string; customerPhone: string; notes?: string; street?: string; number?: string;
   complement?: string; neighborhood?: string; city?: string; state?: string; postalCode?: string;

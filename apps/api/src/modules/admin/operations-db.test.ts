@@ -10,6 +10,7 @@ import { sequelize } from "../../database/sequelize.js";
 import { env } from "../../config/env.js";
 import { getStoreSetting } from "../settings/store-operation.service.js";
 import { createOrderRouter } from "../orders/order.routes.js";
+import { adminRouter } from "./admin.routes.js";
 import { orderEditRouter } from "./order-edit.routes.js";
 import { courierRouter } from "../settings/courier.routes.js";
 import { issueDiningAccess } from "../dining/dining-access.js";
@@ -18,8 +19,8 @@ test("MySQL: ingredientes e preço fixo; Online manual; correções auditadas, e
   const categoryId = randomUUID(), productId = randomUUID(), inventoryId = randomUUID(), tableId = randomUUID(), kitchenId = randomUUID(), key = randomBytes(32).toString("hex"), phone = `329${String(Date.now()).slice(-8)}`;
   const number = 1000000 + Math.floor(Math.random() * 1000000);
   const base = await getStoreSetting();
-  const settings = StoreSetting.build({ ...base.get({ plain: true }), tableCount: number, allowPickup: true, allowDelivery: true, cashEnabled: true, cardOnDeliveryEnabled: true, onlinePaymentEnabled: true, pixEnabled: true, fixedDeliveryFee: 5, city: "Cidade QA", state: "MG", minimumOrder: 0 });
-  const app = express(); app.use(express.json()); app.use("/orders", createOrderRouter({ settings: async () => settings, isOpen: async () => true })); app.use("/admin/order-edits", orderEditRouter); app.use("/admin/couriers", courierRouter);
+  const settings = StoreSetting.build({ ...base.get({ plain: true }), tableCount: number, autoAcceptOrders: false, allowPickup: true, allowDelivery: true, cashEnabled: true, cardOnDeliveryEnabled: true, onlinePaymentEnabled: true, pixEnabled: true, fixedDeliveryFee: 5, city: "Cidade QA", state: "MG", minimumOrder: 0 });
+  const app = express(); app.use(express.json()); app.use("/orders", createOrderRouter({ settings: async () => settings, isOpen: async () => true })); app.use("/admin/order-edits", orderEditRouter); app.use("/admin/couriers", courierRouter); app.use("/admin", adminRouter);
   const events: string[] = []; app.set("io", { to: () => ({ emit: (name: string) => events.push(name) }) });
   const server = app.listen(0, "127.0.0.1"); await once(server, "listening");
   const address = server.address(); assert.ok(address && typeof address !== "string");
@@ -74,10 +75,16 @@ test("MySQL: ingredientes e preço fixo; Online manual; correções auditadas, e
     assert.equal(manualReceived.status,201,await manualReceived.clone().text());
     const manualId = (await manualReceived.json()).id; ids.push(manualId);
     const paid = await read(manualId); assert.equal(paid.paymentStatus,"APPROVED"); assert.ok(paid.paidAt);
-    for (const paymentMethod of ["CASH", "PIX"]) {
+    for (const paymentMethod of ["CASH", "PIX", "CREDIT_CARD", "DEBIT_CARD"]) {
       const delivery = await send("/orders", { ...customer, fulfillmentType: "DELIVERY", paymentMethod, address: { street: "Rua QA", number: "123", neighborhood: "Bairro QA", city: "Cidade QA", state: "MG", postalCode: "36000000" }, items: [{ ...item, quantity: 1 }] });
       assert.equal(delivery.status,201,await delivery.clone().text()); const deliveryId = (await delivery.json()).id; ids.push(deliveryId);
-      const delivered = await read(deliveryId); assert.equal(delivered.customerName,customer.customerName); assert.equal(delivered.number,"123"); assert.equal(Number(delivered.deliveryFee),5);
+      const delivered = await read(deliveryId); assert.equal(delivered.customerName,customer.customerName); assert.equal(delivered.number,"123"); assert.equal(Number(delivered.deliveryFee),5); assert.equal(delivered.paymentStatus,"NOT_REQUIRED"); assert.equal(delivered.paidAt,null); assert.equal(delivered.paymentExpiresAt,null); assert.equal(delivered.paymentExternalId,null); assert.equal(delivered.paymentCheckoutUrl,null); assert.equal(delivered.pixCopyPaste,null); assert.equal(delivered.customerDocument,null); assert.equal(delivered.customerEmail,null);
+      if (paymentMethod === "PIX") {
+        await Order.update({paymentStatus:"PENDING"},{where:{id:deliveryId}});
+        const advance = await send(`/admin/orders/${deliveryId}/status`,{status:"CONFIRMED"},token,"PATCH"); assert.equal(advance.status,200,await advance.clone().text());
+        const advanced = await read(deliveryId); assert.equal(advanced.paymentStatus,"NOT_REQUIRED"); assert.equal(advanced.paidAt,null); assert.equal(advanced.status,"CONFIRMED");
+      }
+
     }
   } finally {
     await OrderEdit.destroy({ where: { orderId: { [Op.in]: ids } } });
