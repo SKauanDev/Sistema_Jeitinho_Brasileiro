@@ -1,38 +1,23 @@
+import { customerProfile, phonesFor, listCustomers } from "./customer-history.service.js";
 import { compare, hash } from "bcryptjs";
 import { parseCustomerAddress } from "./customer-address.js";
-import { Op, QueryTypes } from "sequelize";
+import { Op } from "sequelize";
 import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../../config/env.js";
 import { Coupon, CustomerRecord, CustomerAccount, CustomerCoupon, Order, OrderItem, OrderItemOption, OrderStatusHistory } from "../../database/models.js";
 import { sequelize } from "../../database/sequelize.js";
 import { requireAdmin, requireAuth } from "../../shared/auth.middleware.js";
-import { customerAliases, recordForPhone } from "./customer-records.js";
+import { customerAliases, recordForPhone, normalizeCustomerPhone, customerPhoneWhere } from "./customer-records.js";
 import { couponWasUsedByPhone } from "../promotions/coupon.service.js";
 import { allowEmailAttempt, consumeEmailCode, normalizeEmail, sendEmailCode } from "./email-verification.service.js";
 
 export const publicCustomerRouter = Router();
 export const customerRouter = Router();
 customerRouter.use(requireAuth, requireAdmin);
-const phoneSql = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(customer_phone, '(', ''), ')', ''), '-', ''), ' ', ''), '+', '')";
-const cleanPhone = (value: unknown) => String(value ?? "").replace(/\D/g, "").slice(0, 13);
+const cleanPhone = normalizeCustomerPhone;
 const validPassword = (value: unknown) => typeof value === "string" && value.length >= 6 && value.length <= 72;
 
-async function phonesFor(phone: string) {
-  return sequelize.query<{ customerPhone: string }>(`SELECT DISTINCT customer_phone AS customerPhone FROM orders WHERE ${phoneSql} = :phone`, { replacements: { phone }, type: QueryTypes.SELECT });
-}
-async function customerProfile(phone: string, customerAccountId?: string) {
-  const record = await recordForPhone(phone);
-  if (record?.getDataValue("deletedAt")) return null;
-  const rows = (await Promise.all(customerAliases(record, phone).map(phonesFor))).flat();
-  if (!rows.length && !record) return null;
-  const orders = await Order.findAll({ where: customerAccountId ? { customerAccountId } : { customerPhone: rows.map((row) => row.customerPhone) }, include: [{ model: OrderItem, as: "items", include: [{ model: OrderItemOption, as: "selectedOptions" }] }, { model: OrderStatusHistory, as: "statusHistory" }], order: [["createdAt", "DESC"]] });
-  const contact = await CustomerAccount.findOne({ where: customerAccountId ? { id: customerAccountId } : { phone: customerAliases(record, phone) }, attributes: ["email"] });
-  const plain = orders.map((order) => order.get({ plain: true }) as Record<string, unknown>); const completed = plain.filter((order) => order.status === "COMPLETED"); const totalSpent = completed.reduce((sum, order) => sum + Number(order.total), 0);
-  const lastDelivery = plain.find(order => order.fulfillmentType === "DELIVERY" && order.street);
-  const address = record?.getDataValue("address") ?? (lastDelivery ? Object.fromEntries(["street","number","neighborhood","city","state","postalCode","complement"].map(key => [key,String(lastDelivery[key] ?? "")])) : null);
-  return { address, id: record?.getDataValue("originalPhone") ?? phone, name: record?.getDataValue("name") ?? plain[0]?.customerName, phone: record?.getDataValue("phone") ?? plain[0]?.customerPhone, email: contact?.getDataValue("email") ?? record?.getDataValue("email"), customerSince: plain.at(-1)?.createdAt ?? record?.getDataValue("createdAt"), lastOrderAt: plain[0]?.createdAt ?? record?.getDataValue("createdAt"), ordersCount: plain.length, completedOrders: completed.length, totalSpent, averageTicket: completed.length ? totalSpent / completed.length : 0, orders };
-}
 function customerToken(account: any) { return jwt.sign({ sub: String(account.getDataValue("id")), phone: String(account.getDataValue("phone")), role: "CUSTOMER" }, env.jwtSecret, { expiresIn: "30d" }); }
 async function authenticatedProfile(account: any) {
   const phone = String(account.getDataValue("phone")); const profile = await customerProfile(phone, String(account.getDataValue("id")));
@@ -46,7 +31,7 @@ async function authenticatedProfile(account: any) {
 publicCustomerRouter.use(async (request, response, next) => {
   const phone = cleanPhone(request.body?.phone);
   const record = phone ? await recordForPhone(phone) : null;
-  if (record && record.getDataValue("phone") !== phone && !record.getDataValue("deletedAt")) { response.status(409).json({ message: "O telefone deste cadastro foi atualizado. Consulte a loja." }); return; }
+  if (record && cleanPhone(record.getDataValue("phone")) !== phone && !record.getDataValue("deletedAt")) { response.status(409).json({ message: "O telefone deste cadastro foi atualizado. Consulte a loja." }); return; }
   if (record?.getDataValue("deletedAt")) { response.status(403).json({ message: "Cadastro exclu\u00eddo. Entre em contato com a loja." }); return; }
   next();
 });
@@ -54,7 +39,7 @@ publicCustomerRouter.post("/register", async (request, response) => {
   const phone = cleanPhone(request.body.phone); const password = request.body.password;
   if (phone.length < 10 || !validPassword(password)) { response.status(400).json({ message: "Informe um telefone válido e uma senha com pelo menos 6 caracteres." }); return; }
   if (!(await phonesFor(phone)).length) { response.status(404).json({ message: "Telefone não encontrado. Faça seu primeiro pedido antes de criar a conta." }); return; }
-  if (await CustomerAccount.findOne({ where: { phone } })) { response.status(409).json({ message: "Este telefone já possui senha. Entre normalmente ou use 'Esqueci minha senha'." }); return; }
+  if (await CustomerAccount.findOne({ where: customerPhoneWhere("phone",[phone]) })) { response.status(409).json({ message: "Este telefone já possui senha. Entre normalmente ou use 'Esqueci minha senha'." }); return; }
   let orderId: string;
   try {
     const claims = jwt.verify(String(request.body.orderToken ?? ""), env.jwtSecret, { algorithms: ["HS256"], audience: "urfood-order-tracking" });
@@ -75,7 +60,7 @@ publicCustomerRouter.post("/register", async (request, response) => {
 publicCustomerRouter.post("/login", async (request, response) => {
   const phone = cleanPhone(request.body.phone); const password = String(request.body.password ?? "");
   if (!phone || !password) { response.status(400).json({ message: "Informe telefone e senha." }); return; }
-  const account = await CustomerAccount.findOne({ where: { phone, active: true } });
+  const account = await CustomerAccount.findOne({ where: { [Op.and]: [customerPhoneWhere("phone",[phone]),{active:true}] } });
   if (!account) { response.status(409).json({ code: "ACCOUNT_SETUP_REQUIRED", message: "Primeiro acesso: crie uma senha para este telefone." }); return; }
   if (!(await compare(password, String(account.getDataValue("passwordHash"))))) { response.status(401).json({ message: "Telefone ou senha inválidos." }); return; }
   response.json(await authenticatedProfile(account));
@@ -88,7 +73,7 @@ publicCustomerRouter.post("/reset-password/request", async (request, response) =
       response.status(429).json({ message: "Aguarde antes de solicitar outro código." }); return;
     }
     await sequelize.transaction(async (transaction) => {
-      const account = await CustomerAccount.findOne({ where: { phone, email, active: true }, transaction, lock: transaction.LOCK.UPDATE });
+      const account = await CustomerAccount.findOne({ where: { [Op.and]: [customerPhoneWhere("phone",[phone]),{email,active:true}] }, transaction, lock: transaction.LOCK.UPDATE });
       if (account?.getDataValue("emailVerifiedAt")) await sendEmailCode(account, email, "RESET", transaction);
     });
     response.json({ message: "Se os dados correspondem a uma conta com e-mail confirmado, você receberá um código.", retryAfter: 60 });
@@ -106,7 +91,7 @@ publicCustomerRouter.post("/reset-password", async (request, response) => {
     if (!(await phonesFor(phone)).length) { response.status(404).json({ message: "Telefone não encontrado. Faça seu primeiro pedido antes de criar a conta." }); return; }
     const passwordHash = await hash(password, 12);
     const account = await sequelize.transaction(async (transaction) => {
-      const found = await CustomerAccount.findOne({ where: { phone }, transaction, lock: transaction.LOCK.UPDATE });
+      const found = await CustomerAccount.findOne({ where: customerPhoneWhere("phone",[phone]), transaction, lock: transaction.LOCK.UPDATE });
       if (!found) return CustomerAccount.create({ phone, passwordHash, active: true }, { transaction });
       await found.update({ passwordHash, active: true, emailCodeHash: null, emailCodePurpose: null, emailCodeExpiresAt: null, pendingEmail: null }, { transaction }); return found;
     });
@@ -157,33 +142,7 @@ publicCustomerRouter.post("/coupons/:couponId/redeem", requireAuth, async (reque
   const redemption = await CustomerCoupon.create({ customerAccountId: auth.sub, couponId: coupon.getDataValue("id"), couponCode: coupon.getDataValue("code") }); response.status(201).json({ code: redemption.getDataValue("couponCode") });
 });
 
-customerRouter.get("/", async (_request, response) => {
-  const customers = await sequelize.query(`SELECT ${phoneSql} AS id, SUBSTRING_INDEX(GROUP_CONCAT(customer_name ORDER BY created_at DESC SEPARATOR '||'), '||', 1) AS name, SUBSTRING_INDEX(GROUP_CONCAT(customer_phone ORDER BY created_at DESC SEPARATOR '||'), '||', 1) AS phone, COUNT(*) AS ordersCount, SUM(CASE WHEN status = 'COMPLETED' THEN total ELSE 0 END) AS totalSpent, SUM(status = 'COMPLETED') AS completedOrders, MAX(created_at) AS lastOrderAt, MIN(created_at) AS customerSince FROM orders GROUP BY ${phoneSql} ORDER BY lastOrderAt DESC`, { type: QueryTypes.SELECT });
-  const records = await CustomerRecord.findAll();
-  const recordsByPhone = new Map<string, typeof records[number]>();
-  for (const record of records) for (const alias of customerAliases(record, String(record.getDataValue("originalPhone")))) recordsByPhone.set(alias, record);
-  const merged = new Map<string, any>();
-  for (const raw of customers) {
-    const item = raw as any;
-    if (String(item.id).length < 10 || String(item.id).length > 13) continue;
-    const record = recordsByPhone.get(String(item.id));
-    if (record?.getDataValue("deletedAt")) continue;
-    const id = String(record?.getDataValue("originalPhone") ?? item.id);
-    const previous = merged.get(id);
-    const completedOrders = Number(item.completedOrders ?? 0) + Number(previous?.completedOrders ?? 0);
-    const totalSpent = Number(item.totalSpent ?? 0) + Number(previous?.totalSpent ?? 0);
-    merged.set(id, { ...item, id, name: record?.getDataValue("name") ?? previous?.name ?? item.name,
-      phone: record?.getDataValue("phone") ?? previous?.phone ?? item.phone, email: record?.getDataValue("email") ?? null,
-      ordersCount: Number(item.ordersCount) + Number(previous?.ordersCount ?? 0), completedOrders, totalSpent, averageTicket: completedOrders ? totalSpent / completedOrders : 0,
-      lastOrderAt: previous && new Date(previous.lastOrderAt) > new Date(item.lastOrderAt) ? previous.lastOrderAt : item.lastOrderAt,
-      customerSince: previous && new Date(previous.customerSince) < new Date(item.customerSince) ? previous.customerSince : item.customerSince });
-  }
-  for (const record of records) {
-    const id = String(record.getDataValue("originalPhone"));
-    if (!record.getDataValue("deletedAt") && !merged.has(id)) merged.set(id, { id, name: record.getDataValue("name"), phone: record.getDataValue("phone"), email: record.getDataValue("email"), ordersCount: 0, completedOrders: 0, totalSpent: 0, averageTicket: 0, lastOrderAt: record.getDataValue("createdAt"), customerSince: record.getDataValue("createdAt") });
-  }
-  response.json([...merged.values()].sort((a, b) => new Date(b.lastOrderAt).getTime() - new Date(a.lastOrderAt).getTime()));
-});
+customerRouter.get("/", async (_request,response) => { response.json(await listCustomers()); });
 customerRouter.get("/:phone", async (request, response) => { const profile = await customerProfile(cleanPhone(request.params.phone)); if (!profile) { response.status(404).json({ message: "Cliente não encontrado." }); return; } response.json(profile); });
 
 customerRouter.patch("/:phone", async (request, response) => {
@@ -202,9 +161,9 @@ customerRouter.patch("/:phone", async (request, response) => {
       if (records.some(other => other !== record && customerAliases(other, String(other.getDataValue("originalPhone"))).includes(phone))) throw Error("Este telefone pertence a outro cadastro.");
       const collision = !aliases.includes(phone) && (await phonesFor(phone)).length > 0;
       if (collision) throw Error("Este telefone j\u00e1 possui hist\u00f3rico de outro cliente.");
-      const accounts = await CustomerAccount.findAll({ where: { phone: { [Op.in]: aliases } }, transaction, lock: transaction.LOCK.UPDATE });
+      const accounts = await CustomerAccount.findAll({ where: customerPhoneWhere("phone",aliases), transaction, lock: transaction.LOCK.UPDATE });
       const account = accounts[0];
-      if (await CustomerAccount.findOne({ where: { phone, ...(account ? { id: { [Op.ne]: account.getDataValue("id") } } : {}) }, transaction })) throw Error("Telefone vinculado a outra conta.");
+      if (await CustomerAccount.findOne({ where: { [Op.and]: [customerPhoneWhere("phone",[phone]), ...(account ? [{id:{[Op.ne]:account.getDataValue("id")}}] : [])] }, transaction })) throw Error("Telefone vinculado a outra conta.");
       if (account) await account.update({ phone, email: email || null, ...(account.getDataValue("email") !== (email || null) ? { emailVerifiedAt: null, pendingEmail: null, emailCodeHash: null, emailCodeExpiresAt: null, emailCodePurpose: null } : {}) }, { transaction });
       const values = { phone, name, email: email || null, ...(address !== undefined ? { address } : {}), aliases: [...new Set([...aliases, phone])] };
       if (record) await record.update(values, { transaction }); else await CustomerRecord.create({ originalPhone, ...values }, { transaction });
@@ -220,7 +179,7 @@ customerRouter.delete("/:phone", async (request, response) => {
     const record = await recordForPhone(phone, transaction);
     if (record) await record.reload({ transaction, lock: transaction.LOCK.UPDATE });
     const aliases = customerAliases(record, phone);
-    const accounts = await CustomerAccount.findAll({ where: { phone: { [Op.in]: aliases } }, transaction, lock: transaction.LOCK.UPDATE });
+    const accounts = await CustomerAccount.findAll({ where: customerPhoneWhere("phone",aliases), transaction, lock: transaction.LOCK.UPDATE });
     for (const account of accounts) {
       await CustomerCoupon.destroy({ where: { customerAccountId: account.getDataValue("id") }, transaction });
       await Order.update({ customerAccountId: null }, { where: { customerAccountId: account.getDataValue("id") }, transaction });

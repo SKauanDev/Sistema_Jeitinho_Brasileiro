@@ -21,10 +21,6 @@ import {
   ORDER_TRANSITIONS,
   type OrderStatus,
 } from "../orders/order.constants.js";
-import {
-  applyOrderInventory,
-  revertOrderInventory,
-} from "../inventory/catalog-inventory.service.js";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdminArea);
@@ -229,7 +225,20 @@ adminRouter.get("/orders/store", async (_request, response) => {
 });
 
 adminRouter.get("/orders", async (_request, response) => {
+  const terminalStatuses = ["COMPLETED", "CANCELED"];
+  const recentClosed = await Order.findAll({
+    attributes: ["id"],
+    where: { status: { [Op.in]: terminalStatuses } },
+    order: [["createdAt", "DESC"]],
+    limit: 200,
+  });
   const orders = await Order.findAll({
+    where: {
+      [Op.or]: [
+        { status: { [Op.notIn]: terminalStatuses } },
+        { id: { [Op.in]: recentClosed.map(order => order.getDataValue("id")) } },
+      ],
+    },
     include: [
       {
         model: OrderItem,
@@ -239,8 +248,9 @@ adminRouter.get("/orders", async (_request, response) => {
       { model: OrderStatusHistory, as: "statusHistory" },
     ],
     order: [["createdAt", "DESC"]],
-    limit: 200,
   });
+  response.setHeader("X-Order-Server-Time", new Date().toISOString());
+  response.setHeader("Access-Control-Expose-Headers", "X-Order-Server-Time");
   const developer = isDeveloper(response.locals.user);
   response.json(orders.map(order => ({ ...order.get({ plain: true }), canDelete: developer && ["COMPLETED", "CANCELED"].includes(String(order.getDataValue("status"))) })));
 });
@@ -297,14 +307,6 @@ adminRouter.patch("/orders/:id/status", async (request, response) => {
       { orderId: order.getDataValue("id"), status },
       { transaction },
     );
-    if (status === "CANCELED")
-      await revertOrderInventory(String(order.getDataValue("id")), transaction);
-    else if (
-      ["APPROVED", "NOT_REQUIRED"].includes(
-        String(order.getDataValue("paymentStatus")),
-      )
-    )
-      await applyOrderInventory(String(order.getDataValue("id")), transaction);
     return null;
   });
   if (transitionError) { response.status(409).json({ message: transitionError }); return; }

@@ -1,4 +1,5 @@
 import type { StoreSettings } from "../types/settings";
+import { synchronizeOrderClock } from "../utils/order-clock";
 import type { DashboardData, Order, OrderStatus } from "../types/admin";
 
 export const API_URL = (import.meta.env.VITE_API_URL?.trim() || "/api").replace(/\/+$/, "");
@@ -23,6 +24,7 @@ export function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
 async function performAuthFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = localStorage.getItem("urfood_token");
   const response = await fetch(`${API_URL}${path}`, { ...init, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...init?.headers } });
+  if (response.ok && path === "/admin/orders") synchronizeOrderClock(response.headers.get("X-Order-Server-Time"));
   const data = (response.status === 204 ? undefined : await response.json()) as T & { message?: string };
   if (response.status === 401) { localStorage.removeItem("urfood_token"); localStorage.removeItem("urfood_user"); window.location.href = "/"; }
   if (!response.ok) throw new Error(data?.message ?? "Falha ao consultar a API.");

@@ -1,5 +1,6 @@
 import { isCounterPayment, isPaymentWaiting } from "../order-status/order-presentation";
 import { newOrderMinutes, newOrderSeverity } from "../../utils/order-waiting";
+import { orderClockNow } from "../../utils/order-clock";
 import { finishedOrderLabel, orderFinishedAt, orderIsFinished } from "../../utils/order-age";
 import { OrderEditDialog } from "./OrderEditDialog";
 import { ManualOrderDialog } from "./ManualOrderDialog";
@@ -62,7 +63,7 @@ export function OrdersKanbanModule() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [realtimeConnected, setRealtimeConnected] = useState(false);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(orderClockNow);
   const [averageMinutes, setAverageMinutes] = useState(30);
   const alerted = useRef(new Set<string>());
   const boardRef = useRef<HTMLDivElement>(null);
@@ -170,12 +171,13 @@ export function OrdersKanbanModule() {
         );
       });
     });
-    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    const timer = window.setInterval(() => setNow(orderClockNow()), 10_000);
     const refreshTimer = window.setInterval(() => {
       if (document.visibilityState === "visible") refresh();
     }, 60_000);
     window.addEventListener("focus", refresh);
     const receivedOrders = (event: Event) => {
+      setNow(orderClockNow());
       const items = (event as CustomEvent<Order[]>).detail;
       setOrders(items);
       setSelected(current => current ? items.find(item => item.id === current.id) ?? null : null);

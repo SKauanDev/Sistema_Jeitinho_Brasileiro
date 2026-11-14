@@ -5,7 +5,6 @@ import { Courier, DiningSession, DiningTable, Order, OrderEdit, OrderItem, Order
 import { sequelize } from "../../database/sequelize.js";
 import { requireAuth, requireAdmin } from "../../shared/auth.middleware.js";
 import { ORDER_STATUSES } from "../orders/order.constants.js";
-import { applyOrderInventory, revertOrderInventory } from "../inventory/catalog-inventory.service.js";
 import { ADMIN_ROOM } from "../../realtime/socket-security.js";
 import { serviceFee } from "../orders/service-fee.js";
 import { getStoreSetting } from "../settings/store-operation.service.js";
@@ -64,10 +63,6 @@ orderEditRouter.patch("/:id", async (req, res) => {
       if (discountAmount > subtotal) throw Error("O desconto não pode ultrapassar o subtotal.");
       const waiterFee = serviceFee(subtotal - discountAmount, input.serviceFeeAccepted, !!target);
       const total = money(Math.round((subtotal - discountAmount + digitalSecurityFee + deliveryFee + waiterFee) * 100) / 100);
-      await revertOrderInventory(orderId, transaction);
-      // The stock service updates a separate model instance; refresh flags before
-      // clearing them so Sequelize writes the next revision's null markers.
-      await order.reload({ transaction });
       for (const oldItem of await OrderItem.findAll({ where: { orderId }, transaction })) {
         await OrderItemOption.destroy({ where: { orderItemId: oldItem.getDataValue("id") }, transaction });
         await oldItem.destroy({ transaction });
@@ -84,7 +79,6 @@ orderEditRouter.patch("/:id", async (req, res) => {
         paidAt: paymentStatus === "APPROVED" ? order.getDataValue("paidAt") ?? new Date() : null,
         completedAt: input.status === "COMPLETED" ? order.getDataValue("completedAt") ?? new Date() : null,
         cancellationReason: input.status === "CANCELED" ? reason : null,
-        inventoryRevision: Number(order.getDataValue("inventoryRevision")) + 1, inventoryProcessedAt: null, inventoryRevertedAt: null,
         diningSessionId: targetSession, tableNumber: targetTable?.getDataValue("number") ?? null,
         courierId: !target && input.fulfillmentType === "DELIVERY" ? courier?.getDataValue("id") ?? (retainCourier ? order.getDataValue("courierId") : null) : null,
         courierName: !target && input.fulfillmentType === "DELIVERY" ? courier?.getDataValue("name") ?? (retainCourier ? order.getDataValue("courierName") : null) : null,
@@ -92,7 +86,6 @@ orderEditRouter.patch("/:id", async (req, res) => {
       for (const [key, max] of Object.entries({ customerName: 120, customerPhone: 30, customerEmail: 254, customerDocument: 14, notes: 2000, street: 180, number: 30, complement: 120, neighborhood: 120, city: 120, state: 2, postalCode: 12, addressReference: 255, couponCode: 50 })) changes[key] = text(input[key] ?? "", max, key === "customerName");
       changes.changeFor = input.changeFor == null ? null : money(input.changeFor);
       await order.update(changes, { transaction });
-      if (input.status !== "CANCELED" && ["APPROVED", "NOT_REQUIRED"].includes(paymentStatus)) await applyOrderInventory(orderId, transaction);
       if (before.status !== input.status) await OrderStatusHistory.create({ orderId, status: input.status }, { transaction });
       for (const session of sessions) {
         if (!session.getDataValue("closedAt")) continue;

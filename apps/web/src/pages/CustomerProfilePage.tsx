@@ -51,7 +51,7 @@ export function CustomerProfilePage() {
     localStorage.setItem("urfood_customer_token", data.token);
     localStorage.setItem(
       "urfood_customer",
-      JSON.stringify({ name: data.customer.name, phone: data.customer.phone }),
+      JSON.stringify({ name: data.customer.name, phone: data.customer.phone, address: data.customer.address }),
     );
     localStorage.setItem(
       "urfood_customer_profile",
@@ -125,9 +125,10 @@ export function CustomerProfilePage() {
         };
         if (!response.ok) throw new Error(data.message);
         setProfile(data);
+        localStorage.setItem("urfood_customer_profile",JSON.stringify(data));
         localStorage.setItem(
           "urfood_customer",
-          JSON.stringify({ name: data.name, phone: data.phone }),
+          JSON.stringify({ name: data.name, phone: data.phone, address: data.address }),
         );
         if (data.claimedCouponCode)
           localStorage.setItem("urfood_claimed_coupon", data.claimedCouponCode);
@@ -148,6 +149,7 @@ export function CustomerProfilePage() {
       "urfood_customer_token",
       "urfood_customer",
       "urfood_customer_profile",
+      "urfood_checkout_defaults",
       "urfood_claimed_coupon",
       "urfood_current_order",
       "urfood_orders",

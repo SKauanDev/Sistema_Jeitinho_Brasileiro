@@ -1,3 +1,4 @@
+import { normalizeCustomerPhone } from "../customers/customer-records.js";
 import { PizzaValidationError } from "../catalog/pizza-sizes.js";
 import { isCounterPayment } from "./payment-policy.js";
 import { pricingProduct, configuredPromotionPercent, promotionalAmount } from "../promotions/product-promotion.js";
@@ -20,7 +21,6 @@ import type { Server } from "socket.io";
 import { calculateCoupon } from "../promotions/coupon.service.js";
 import { serviceFee } from "./service-fee.js";
 import { parseIngredients } from "../catalog/ingredients.js";
-import { applyOrderInventory, validateOrderInventory } from "../inventory/catalog-inventory.service.js";
 import { Op, Transaction } from "sequelize";
 import { orderQuantity } from "../inventory/stock-validation.js";
 import { DIGITAL_SECURITY_FEE, orderTotal } from "./order-fees.js";
@@ -147,7 +147,7 @@ orderRouter.post("/", async (request, response) => {
       try {
         const claims = jwt.verify(customerToken, env.jwtSecret, { algorithms: ["HS256"] });
         const identity = typeof claims === "string" ? null : await resolveIdentity(claims);
-        if (!identity || identity.role !== "CUSTOMER" || identity.phone !== String(payload.customerPhone).replace(/\D/g, "")) throw new Error();
+        if (!identity || identity.role !== "CUSTOMER" || normalizeCustomerPhone(identity.phone) !== normalizeCustomerPhone(payload.customerPhone)) throw new Error();
         customerAccountId = identity.sub!;
       } catch { response.status(401).json({ message: "Entre novamente no perfil para continuar o pedido." }); return; }
     }
@@ -245,7 +245,6 @@ orderRouter.post("/", async (request, response) => {
           .reduce((sum, item) => sum + item.lineTotal, 0)
           .toFixed(2),
       );
-      await validateOrderInventory(normalizedItems, transaction);
       const fixedFee = settings.getDataValue("fixedDeliveryFee");
       const isFixedDelivery = hasFixedDeliveryFee(fixedFee);
       const zone =
@@ -357,7 +356,6 @@ orderRouter.post("/", async (request, response) => {
         },
         { transaction },
       );
-      if (["APPROVED", "NOT_REQUIRED"].includes(String(order.getDataValue("paymentStatus")))) await applyOrderInventory(String(order.getDataValue("id")), transaction);
       return order;
     });
     const paymentPath = null;

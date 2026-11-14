@@ -1,4 +1,7 @@
-import { FormEvent, useEffect, useState } from "react";
+import { customerCheckoutHeaders } from "./customer-checkout-session";
+import { readCheckoutDefaults, rememberCheckoutDefaults } from "./checkout-defaults";
+import type { CustomerDetails } from "../../types/customer";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, Bike, CircleHelp, LoaderCircle, MapPin, ShieldCheck, Store, X } from "lucide-react";
 import { API_URL } from "../../services/admin-api";
@@ -58,7 +61,8 @@ type DeliveryQuote = {
 const money = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const formatPhone = (value: string) => {
-  const digits = value.replace(/\D/g, "").slice(0, 11);
+  const raw = value.replace(/\D/g, "");
+  const digits = ((raw.length === 12 || raw.length === 13) && raw.startsWith("55") ? raw.slice(2) : raw).slice(0,11);
   if (digits.length <= 2) return digits.replace(/^(\d{1,2})/, "($1");
   if (digits.length <= 6) return digits.replace(/^(\d{2})(\d+)/, "($1) $2");
   if (digits.length <= 10)
@@ -78,22 +82,13 @@ export function CheckoutForm({
   onBack,
   onComplete,
 }: Props) {
-  const [type, setType] = useState<"DELIVERY" | "PICKUP">("DELIVERY");
+  const [initial] = useState(()=>readCheckoutDefaults(manual));
+  const touched=useRef(new Set<string>());
+  const [type, setType] = useState<"DELIVERY" | "PICKUP">(initial.fulfillmentType);
+  const [customerName, setCustomerName] = useState(initial.name);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [phone, setPhone] = useState(() => {
-    try {
-      return formatPhone(
-        (
-          JSON.parse(localStorage.getItem("urfood_customer") ?? "null") as {
-            phone?: string;
-          } | null
-        )?.phone ?? "",
-      );
-    } catch {
-      return "";
-    }
-  });
+  const [phone, setPhone] = useState(()=>formatPhone(initial.phone));
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [changeFor, setChangeFor] = useState("");
   const [showLgpdInfo, setShowLgpdInfo] = useState(false);
@@ -104,15 +99,30 @@ export function CheckoutForm({
     code: string;
     discount: number;
   } | null>(null);
-  const [cep, setCep] = useState("");
+  const [cep, setCep] = useState(()=>formatCep(initial.address.postalCode));
   const [cepLoading, setCepLoading] = useState(false);
   const [cepMessage, setCepMessage] = useState("");
-  const [address, setAddress] = useState({
-    street: "",
-    neighborhood: "",
-    city: "",
-    state: "",
-  });
+  const [address, setAddress] = useState(initial.address);
+  const changeAddress=(key:keyof typeof address,value:string)=>{touched.current.add(key);setAddress(current=>({...current,[key]:value}));};
+  useEffect(()=>{
+    const token=localStorage.getItem("urfood_customer_token");
+    if(manual||!token)return;
+    const controller=new AbortController();
+    void fetch(`${API_URL}/customers/session`,{headers:{Authorization:`Bearer ${token}`},signal:controller.signal}).then(async response=>{
+      if(!response.ok)return;
+      const profile=await response.json() as CustomerDetails;
+      if(!profile || typeof profile.phone!=="string")return;
+      if(controller.signal.aborted||localStorage.getItem("urfood_customer_token")!==token)return;
+      localStorage.setItem("urfood_customer_profile",JSON.stringify(profile));
+      localStorage.setItem("urfood_customer",JSON.stringify({name:profile.name,phone:profile.phone,address:profile.address}));
+      const defaults=readCheckoutDefaults(false);
+      if(!touched.current.has("name"))setCustomerName(current=>defaults.name||current);
+      if(!touched.current.has("phone"))setPhone(current=>defaults.phone?formatPhone(defaults.phone):current);
+      if(!touched.current.has("postalCode"))setCep(current=>defaults.address.postalCode?formatCep(defaults.address.postalCode):current);
+      setAddress(current=>Object.fromEntries(Object.keys(current).map(key=>[key,touched.current.has(key)?current[key as keyof typeof current]:defaults.address[key as keyof typeof defaults.address]||current[key as keyof typeof current]])) as typeof current);
+    }).catch(()=>undefined);
+    return ()=>controller.abort();
+  },[manual]);
   const [config, setConfig] = useState<DeliveryConfig | null>(null);
   const [quote, setQuote] = useState<DeliveryQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -220,12 +230,13 @@ export function CheckoutForm({
         uf?: string;
       };
       if (!response.ok || data.erro) throw new Error("CEP não encontrado.");
-      setAddress({
+      setAddress(current=>({...current,
         street: data.logradouro ?? "",
         neighborhood: data.bairro ?? "",
         city: data.localidade ?? "",
         state: data.uf ?? "",
-      });
+        postalCode: digits,
+      }));
       setCepMessage("Endereço localizado automaticamente.");
     } catch (reason) {
       setCepMessage(
@@ -293,11 +304,12 @@ export function CheckoutForm({
     try {
       const response = await fetch(`${API_URL}/orders`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(manual ? { Authorization: `Bearer ${localStorage.getItem("urfood_token")}` } : {}) },
+        headers: { "Content-Type": "application/json", ...customerCheckoutHeaders(manual, customerPhone) },
         body: JSON.stringify(body),
       });
       const data = (await response.json()) as {
         id?: string;
+        createdAt?: string;
         trackingToken?: string;
         paymentPath?: string | null;
         message?: string;
@@ -305,6 +317,7 @@ export function CheckoutForm({
       if (!response.ok || !data.id)
         throw new Error(data.message ?? "Não foi possível enviar o pedido.");
       if (data.trackingToken) rememberTrackingToken(data.id, data.trackingToken);
+      rememberCheckoutDefaults({...body,createdAt:data.createdAt});
       onComplete(data.id, data.paymentPath ?? null);
     } catch (reason) {
       setError(
@@ -397,6 +410,8 @@ export function CheckoutForm({
             name="name"
             required
             autoComplete="name"
+            value={customerName}
+            onChange={event=>{touched.current.add("name");setCustomerName(event.target.value);}}
             placeholder="Quem receberá o pedido?"
           />
         </label>
@@ -408,7 +423,7 @@ export function CheckoutForm({
             autoComplete="tel"
             inputMode="tel"
             value={phone}
-            onChange={(event) => setPhone(formatPhone(event.target.value))}
+            onChange={(event) => {touched.current.add("phone");setPhone(formatPhone(event.target.value));}}
             minLength={14}
             maxLength={15}
             placeholder="(00) 00000-0000"
@@ -431,6 +446,7 @@ export function CheckoutForm({
                   inputMode="numeric"
                   value={cep}
                   onChange={(event) => {
+                    ["postalCode","street","neighborhood","city","state"].forEach(key=>touched.current.add(key));
                     const formatted = formatCep(event.target.value);
                     setCep(formatted);
                     void lookupCep(formatted);
@@ -458,18 +474,13 @@ export function CheckoutForm({
                 required
                 autoComplete="address-line1"
                 value={address.street}
-                onChange={(event) =>
-                  setAddress((current) => ({
-                    ...current,
-                    street: event.target.value,
-                  }))
-                }
+                onChange={event=>changeAddress("street",event.target.value)}
                 placeholder="Nome da rua"
               />
             </label>
             <label className="field-number">
               Número
-              <input name="number" required placeholder="Nº" />
+              <input name="number" required placeholder="Nº" value={address.number} onChange={event=>changeAddress("number",event.target.value)} />
             </label>
             <label>
               Bairro
@@ -477,12 +488,7 @@ export function CheckoutForm({
                 name="neighborhood"
                 required
                 value={address.neighborhood}
-                onChange={(event) =>
-                  setAddress((current) => ({
-                    ...current,
-                    neighborhood: event.target.value,
-                  }))
-                }
+                onChange={event=>changeAddress("neighborhood",event.target.value)}
               />
             </label>
             <label>
@@ -492,12 +498,7 @@ export function CheckoutForm({
                 required
                 autoComplete="address-level2"
                 value={address.city}
-                onChange={(event) =>
-                  setAddress((current) => ({
-                    ...current,
-                    city: event.target.value,
-                  }))
-                }
+                onChange={event=>changeAddress("city",event.target.value)}
               />
             </label>
             <label className="field-state">
@@ -507,12 +508,7 @@ export function CheckoutForm({
                 required
                 autoComplete="address-level1"
                 value={address.state}
-                onChange={(event) =>
-                  setAddress((current) => ({
-                    ...current,
-                    state: event.target.value.toUpperCase().slice(0, 2),
-                  }))
-                }
+                onChange={event=>changeAddress("state",event.target.value.toUpperCase().slice(0,2))}
                 maxLength={2}
                 placeholder="SP"
               />
@@ -521,6 +517,8 @@ export function CheckoutForm({
               Complemento
               <input
                 name="complement"
+                value={address.complement}
+                onChange={event=>changeAddress("complement",event.target.value)}
                 autoComplete="address-line2"
                 placeholder="Apto, bloco, referência..."
               />
