@@ -32,7 +32,7 @@ type Props = {
   onBack: () => void;
   onComplete: (orderId: string, paymentPath: string | null) => void;
 };
-type PaymentMethod = "PIX" | "CASH" | "ONLINE" | "CREDIT_CARD" | "DEBIT_CARD" | "RECEIVED_ONLINE";
+type PaymentMethod = "PIX" | "CASH" | "CREDIT_CARD" | "DEBIT_CARD" | "RECEIVED_ONLINE";
 type DeliveryConfig = {
   isOpen: boolean;
   allowDelivery: boolean;
@@ -124,7 +124,6 @@ export function CheckoutForm({
     ? [
         config.payments.pix && ["PIX", "PIX"],
         config.payments.cash && ["CASH", "Dinheiro"],
-        config.payments.onlineCard && ["ONLINE", "Online (confirmado pela equipe)"],
         config.payments.cardOnDelivery && ["CREDIT_CARD", "Crédito na entrega"],
         config.payments.cardOnDelivery && ["DEBIT_CARD", "Débito na entrega"],
       ].filter((item): item is [PaymentMethod, string] => Boolean(item))
@@ -149,9 +148,7 @@ export function CheckoutForm({
             ? "CREDIT_CARD"
             : result.payments.pix
               ? "PIX"
-              : result.payments.onlineCard
-                ? "ONLINE"
-                : undefined;
+              : manual ? "RECEIVED_ONLINE" : undefined;
         if (first) setPaymentMethod(first);
       })
       .catch((reason) =>
@@ -243,6 +240,20 @@ export function CheckoutForm({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (loading) return;
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const field = (name: string) => {
+      const control = formElement.elements.namedItem(name);
+      return (control instanceof HTMLInputElement ? control.value : String(form.get(name) ?? "")).trim();
+    };
+    const customerName = field("name"), customerPhone = field("phone");
+    if (!customerName || !customerPhone) {
+      setError(`Preencha ${[!customerName && "o nome", !customerPhone && "o telefone"].filter(Boolean).join(" e ")} para confirmar o pedido.`);
+      return;
+    }
+    if (!items.length) { setError("Seu carrinho está vazio. Volte ao cardápio e adicione os itens novamente."); return; }
+    if (!availablePayments.some(([method]) => method === paymentMethod)) { setError("Selecione uma forma de pagamento disponível."); return; }
     if (!manual && !config?.isOpen) {
       setError("A loja está fechada no momento.");
       return;
@@ -255,13 +266,10 @@ export function CheckoutForm({
     }
     setLoading(true);
     setError("");
-    const form = new FormData(event.currentTarget);
     const body = {
       manual,
-      customerName: form.get("name"),
-      customerPhone: form.get("phone"),
-      customerEmail: form.get("email"),
-      customerDocument: form.get("document"),
+      customerName,
+      customerPhone,
       fulfillmentType: type,
       deliveryFee,
       items,
@@ -272,13 +280,13 @@ export function CheckoutForm({
       address:
         type === "DELIVERY"
           ? {
-              street: form.get("street"),
-              number: form.get("number"),
-              neighborhood: form.get("neighborhood"),
-              city: form.get("city"),
-              state: form.get("state"),
-              complement: form.get("complement"),
-              postalCode: form.get("postalCode"),
+              street: field("street"),
+              number: field("number"),
+              neighborhood: field("neighborhood"),
+              city: field("city"),
+              state: field("state"),
+              complement: field("complement"),
+              postalCode: field("postalCode"),
             }
           : undefined,
     };

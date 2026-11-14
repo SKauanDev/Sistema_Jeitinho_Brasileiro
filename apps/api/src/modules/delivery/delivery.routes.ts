@@ -222,7 +222,7 @@ deliveryRouter.get("/config", async (_request, response) => {
     averagePreparationMinutes: Number(
       settings.getDataValue("averagePreparationMinutes"),
     ),
-    payments: paymentMethods(settings),
+    payments: { ...paymentMethods(settings), onlineCard: false },
     zones,
   });
 });

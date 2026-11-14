@@ -101,6 +101,7 @@ orderRouter.post("/", async (request, response) => {
     } catch { response.status(403).json({ message: "Apenas a equipe pode registrar pedidos manuais." }); return; }
   }
   if (payload.paymentMethod === "RECEIVED_ONLINE" && !manual) { response.status(403).json({ message: "Pagamento recebido só pode ser registrado pela equipe." }); return; }
+  if (payload.paymentMethod === "ONLINE" && !manual) { response.status(403).json({ message: "Pagamento online está disponível apenas no pedido manual do painel." }); return; }
   if (payload.table) {
     if (manual || typeof payload.table !== "object") { response.status(400).json({ message: "Comanda inválida." }); return; }
     payload.customerName = "Mesa"; payload.customerPhone = "Mesa";
@@ -111,14 +112,15 @@ orderRouter.post("/", async (request, response) => {
     response.status(400).json({ message: "Carrinho inválido ou muito grande." }); return;
   }
   if (payload.items.some(item => item.pizzaSelections !== undefined && (!Array.isArray(item.pizzaSelections) || item.pizzaSelections.length > 10 || item.pizzaSelections.some(pizza => !pizza || typeof pizza !== "object")))) { response.status(400).json({ message: "Seleção de pizzas inválida." }); return; }
-  if (
-    !payload.customerName ||
-    !payload.customerPhone ||
-    !payload.fulfillmentType ||
-    !payload.paymentMethod ||
-    !payload.items?.length
-  ) {
-    response.status(400).json({ message: "Dados do pedido incompletos." });
+  const missing = [
+    (!payload.customerName || !String(payload.customerName).trim()) && "nome do cliente",
+    (!payload.customerPhone || !String(payload.customerPhone).trim()) && "telefone",
+    !payload.fulfillmentType && "entrega ou retirada",
+    !payload.paymentMethod && "forma de pagamento",
+    !payload.items?.length && "itens do carrinho",
+  ].filter(Boolean);
+  if (missing.length) {
+    response.status(400).json({ message: `Confira os dados do pedido: faltam ${missing.join(", ")}.`, missingFields: missing });
     return;
   }
   if (
@@ -168,7 +170,7 @@ orderRouter.post("/", async (request, response) => {
           ? enabledPayments.cash
           : payload.paymentMethod === "ONLINE"
             ? enabledPayments.onlineCard
-            : ["CREDIT_CARD", "DEBIT_CARD"].includes(payload.paymentMethod)
+            : ["CREDIT_CARD", "DEBIT_CARD"].includes(payload.paymentMethod ?? "")
               ? enabledPayments.cardOnDelivery
               : false;
     if (!paymentAllowed && !payload.table && !(manual && payload.paymentMethod === "RECEIVED_ONLINE"))

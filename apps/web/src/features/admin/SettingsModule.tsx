@@ -538,19 +538,8 @@ export function SettingsModule() {
                 }
               />
             </Option>
-            <Option
-              icon={<CreditCard />}
-              title="Pagamento online"
-              description="Registro sem cobrança automática. A equipe confirma o recebimento no pedido."
-            >
-              <Toggle
-                checked={store.onlinePaymentEnabled}
-                onChange={(value) =>
-                  setStore({ ...store, onlinePaymentEnabled: value })
-                }
-              />
-            </Option>
           </div>
+          <p className="table-payment-note">Pagamento online já recebido é exclusivo de Adicionar pedido manual, na Central de pedidos.</p>
           {store.pixEnabled && (
             <div className="settings-form">
               <Field label="Chave PIX" wide>

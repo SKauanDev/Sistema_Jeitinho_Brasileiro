@@ -18,7 +18,7 @@ test("MySQL: ingredientes e preço fixo; Online manual; correções auditadas, e
   const categoryId = randomUUID(), productId = randomUUID(), inventoryId = randomUUID(), tableId = randomUUID(), kitchenId = randomUUID(), key = randomBytes(32).toString("hex"), phone = `329${String(Date.now()).slice(-8)}`;
   const number = 1000000 + Math.floor(Math.random() * 1000000);
   const base = await getStoreSetting();
-  const settings = StoreSetting.build({ ...base.get({ plain: true }), tableCount: number, allowPickup: true, allowDelivery: true, cashEnabled: true, cardOnDeliveryEnabled: true, onlinePaymentEnabled: true, minimumOrder: 0 });
+  const settings = StoreSetting.build({ ...base.get({ plain: true }), tableCount: number, allowPickup: true, allowDelivery: true, cashEnabled: true, cardOnDeliveryEnabled: true, onlinePaymentEnabled: true, pixEnabled: true, fixedDeliveryFee: 5, city: "Cidade QA", state: "MG", minimumOrder: 0 });
   const app = express(); app.use(express.json()); app.use("/orders", createOrderRouter({ settings: async () => settings, isOpen: async () => true })); app.use("/admin/order-edits", orderEditRouter); app.use("/admin/couriers", courierRouter);
   const events: string[] = []; app.set("io", { to: () => ({ emit: (name: string) => events.push(name) }) });
   const server = app.listen(0, "127.0.0.1"); await once(server, "listening");
@@ -45,7 +45,10 @@ test("MySQL: ingredientes e preço fixo; Online manual; correções auditadas, e
     const stock = async () => Number((await InventoryItem.findByPk(inventoryId))!.getDataValue("currentStock"));
     let current = await read(cashId); assert.equal(Number(current.subtotal), 50); assert.equal(await stock(), 8); assert.deepEqual(current.items[0].selectedOptions.map((option: any) => option.optionName).sort(), ["Carne", "Pão"]);
     assert.equal((await send("/orders", { ...customer, items: [{ ...item, ingredients: ["Inválido"] }] })).status, 400);
-    const online = await send("/orders", { ...customer, paymentMethod: "ONLINE", items: [{ ...item, quantity: 1 }] }); assert.equal(online.status, 201);
+    assert.equal((await send("/orders", { ...customer, paymentMethod: "ONLINE" })).status,403);
+    assert.equal((await send("/orders", { ...customer, paymentMethod: "RECEIVED_ONLINE" })).status,403);
+    const incomplete = await send("/orders", { ...customer, customerName: "", customerPhone: "" }); assert.equal(incomplete.status,400); assert.deepEqual((await incomplete.json()).missingFields,["nome do cliente","telefone"]);
+    const online = await send("/orders", { ...customer, manual: true, paymentMethod: "ONLINE", items: [{ ...item, quantity: 1 }] }, token); assert.equal(online.status, 201);
     const onlineEvent = await online.json(); ids.push(onlineEvent.id); assert.equal(onlineEvent.paymentPath, null); const pending = await read(onlineEvent.id); assert.equal(pending.paymentProvider, "MANUAL"); assert.equal(pending.paymentStatus, "PENDING"); assert.equal(pending.paymentExpiresAt, null); assert.equal(await stock(), 8); assert.ok(events.includes("order:new"));
     const draft = (order: any) => ({ ...order, deliveryFee: Number(order.deliveryFee), discountAmount: Number(order.discountAmount), digitalSecurityFee: Number(order.digitalSecurityFee), changeFor: null, serviceFeeAccepted: !!order.serviceFeeAccepted, reason: "Correção QA de fechamento", items: order.items.map((line: any) => ({ ...line, unitPrice: Number(line.unitPrice), options: line.selectedOptions.map((option: any) => ({ ...option, priceDelta: Number(option.priceDelta) })) })) });
     const edit = async (order: any, changes: any) => { const response = await send(`/admin/order-edits/${order.id}`, { ...draft(order), ...changes }, token, "PATCH"); assert.equal(response.status, 200, await response.clone().text()); return response.json(); };
@@ -67,6 +70,15 @@ test("MySQL: ingredientes e preço fixo; Online manual; correções auditadas, e
     const card = await send("/orders", { ...customer, paymentMethod: "CREDIT_CARD", items: [{ ...item, quantity: 1 }] });
     assert.equal(card.status, 201, await card.clone().text()); const cardEvent = await card.json(); ids.push(cardEvent.id);
     assert.equal(cardEvent.paymentPath, null); const terminal = await read(cardEvent.id); assert.equal(terminal.paymentStatus, "NOT_REQUIRED"); assert.equal(terminal.paymentProvider, "MANUAL"); assert.equal(terminal.paymentExpiresAt, null); assert.equal(await stock(), 5);
+    const manualReceived = await send("/orders", { ...customer, manual: true, paymentMethod: "RECEIVED_ONLINE", items: [{ ...item, quantity: 1 }] }, token);
+    assert.equal(manualReceived.status,201,await manualReceived.clone().text());
+    const manualId = (await manualReceived.json()).id; ids.push(manualId);
+    const paid = await read(manualId); assert.equal(paid.paymentStatus,"APPROVED"); assert.ok(paid.paidAt);
+    for (const paymentMethod of ["CASH", "PIX"]) {
+      const delivery = await send("/orders", { ...customer, fulfillmentType: "DELIVERY", paymentMethod, address: { street: "Rua QA", number: "123", neighborhood: "Bairro QA", city: "Cidade QA", state: "MG", postalCode: "36000000" }, items: [{ ...item, quantity: 1 }] });
+      assert.equal(delivery.status,201,await delivery.clone().text()); const deliveryId = (await delivery.json()).id; ids.push(deliveryId);
+      const delivered = await read(deliveryId); assert.equal(delivered.customerName,customer.customerName); assert.equal(delivered.number,"123"); assert.equal(Number(delivered.deliveryFee),5);
+    }
   } finally {
     await OrderEdit.destroy({ where: { orderId: { [Op.in]: ids } } });
     await InventoryMovement.destroy({ where: { inventoryItemId: inventoryId } }); await InventoryItem.destroy({ where: { id: inventoryId } });
