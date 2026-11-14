@@ -3,12 +3,15 @@ import { adminApi } from "../../services/admin-api";
 import { createAdminSocket } from "../../services/realtime";
 import { orderSoundReady, ringOrderSound, unlockOrderSound } from "../../services/order-sound";
 import type { Order } from "../../types/admin";
+import { isPaymentWaiting } from "../order-status/order-presentation";
+import { dueNewOrderReminders } from "../../utils/order-waiting";
 
 export function useOrderAlerts() {
   const [newOrders, setNewOrders] = useState(0);
   const [soundReady, setSoundReady] = useState(orderSoundReady);
   const seen = useRef(new Set<string>());
   const pendingSound = useRef(false);
+  const reminders = useRef(new Map<string, string>());
 
   const enableSound = async () => {
     if (await unlockOrderSound()) { ringOrderSound(); pendingSound.current = false; }
@@ -33,11 +36,12 @@ export function useOrderAlerts() {
         const orders = await adminApi.orders();
         if (!active) return;
         window.dispatchEvent(new CustomEvent("urfood:orders-refreshed", { detail: orders }));
-        const paid = orders.filter(order => ["NOT_REQUIRED", "APPROVED"].includes(order.paymentStatus ?? ""));
+        const paid = orders.filter(order => !isPaymentWaiting(order));
         setNewOrders(paid.filter(order => order.status === "NEW").length);
         const arrivals = paid.filter(order => !seen.current.has(order.id) && ["NEW", "CONFIRMED"].includes(order.status));
         paid.forEach(order => seen.current.add(order.id));
-        if (initialized && arrivals.length) ring();
+        const remind = dueNewOrderReminders(paid, Date.now(), reminders.current);
+        if ((initialized && arrivals.length) || remind) ring();
         initialized = true;
       } catch { /* The next socket event, focus or poll retries the request. */ }
       finally { fetching = false; }

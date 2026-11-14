@@ -1,5 +1,6 @@
 import { PizzaValidationError } from "../catalog/pizza-sizes.js";
 import { isCounterPayment } from "./payment-policy.js";
+import { pricingProduct, configuredPromotionPercent, promotionalAmount } from "../promotions/product-promotion.js";
 import { resolvePizzaConfiguration, type PizzaSelection, type PizzaProduct } from "./pizza-configuration.js";
 import { readPizzaRules } from "../catalog/pizza-rules.js";
 import { lockedTable } from "../dining/dining.routes.js";
@@ -80,7 +81,7 @@ type OrderPayload = {
   }>;
 };
 
-export function createOrderRouter(dependencies: { isOpen?: typeof effectiveStoreStatus; settings?: typeof getStoreSetting } = {}) {
+export function createOrderRouter(dependencies: { isOpen?: typeof effectiveStoreStatus; settings?: typeof getStoreSetting; pricingNow?: () => Date } = {}) {
 const orderRouter = Router();
 
 orderRouter.post("/", async (request, response) => {
@@ -186,7 +187,8 @@ orderRouter.post("/", async (request, response) => {
       const products = await Product.findAll({ where: { id: { [Op.in]: productIds }, active: true, trashedAt: null }, include: [{ model: Category, as: "category", where: { active: true } }], transaction });
       const options = optionIds.length ? await Option.findAll({ where: { id: { [Op.in]: optionIds }, active: true }, transaction }) : [];
       const productsById = new Map(products.map(product => [String(product.getDataValue("id")), product]));
-      const pizzaProducts = new Map(products.map(product => { const data = product.get({ plain: true }) as any; return [String(data.id), { ...data, category: data.category?.name ?? "" } as PizzaProduct]; }));
+      const pricingTime = dependencies.pricingNow?.() ?? new Date();
+      const pizzaProducts = new Map(products.map(product => { const data = product.get({ plain: true }) as any; return [String(data.id), pricingProduct({ ...data, category: data.category?.name ?? "" },pricingTime) as PizzaProduct]; }));
       const optionsById = new Map(options.map(option => [String(option.getDataValue("id")), option]));
       const normalizedItems = await Promise.all(
         payload.items!.map(async (item) => {
@@ -196,7 +198,7 @@ orderRouter.post("/", async (request, response) => {
             throw new Error("Um produto do carrinho não está mais disponível.");
           const quantity = orderQuantity(item.quantity);
           const configuration = resolvePizzaConfiguration(pizzaProducts.get(item.productId)!, item.size, item.pizzaSelections, pizzaProducts, readPizzaRules(settings.getDataValue("pizzaRules")), item.style);
-          const unitPrice = configuration.unitPrice;
+          const unitPrice = promotionalAmount(configuration.unitPrice,configuredPromotionPercent(pizzaProducts.get(item.productId)!,item.pizzaSelections,pizzaProducts,pricingTime));
           const normalizedOptions = await Promise.all(
             (item.options ?? []).filter(selected => !["Ingredientes", "Tamanho", "Estilo da massa"].includes(selected.group ?? "") && !/^Borda · Pizza/.test(selected.group ?? "") && (item.pizzaSelections === undefined || !/^Pizza \d+/.test(selected.group ?? ""))).map(async (selected) => {
               if (!selected.optionId) return { ...selected, price: 0 };
@@ -286,9 +288,7 @@ orderRouter.post("/", async (request, response) => {
           customerEmail: payload.customerEmail ? String(payload.customerEmail).trim() : null,
           customerDocument: payload.customerDocument ? String(payload.customerDocument).replace(/\D/g, "") : null,
           fulfillmentType: payload.fulfillmentType,
-          status: settings.getDataValue("autoAcceptOrders")
-            ? "CONFIRMED"
-            : "NEW",
+          status: "NEW",
           notes: payload.notes,
           street: payload.address?.street,
           number: payload.address?.number,

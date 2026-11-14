@@ -16,7 +16,7 @@
 .order-edit-dialog button:disabled { opacity: .6; cursor: wait; }.edit-order-line { margin: 0 0 18px; padding: 16px 0; border-bottom: 1px solid #e9dfd2; display: grid; gap: 12px; }
 .edit-order-option { display: grid; grid-template-columns: 1fr 1fr 110px 44px; gap: 8px; }.edit-line-actions,.edit-order-total { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }.edit-order-total { margin-top: 16px; }.edit-order-total strong { font-size: 22px; color: #6f0801; }
 .order-edit-body .operation-checkbox,.waiter-service label,.sandwich-ingredients label { display: flex; align-items: center; gap: 10px; padding: 10px 0; }.order-edit-body input[type=checkbox],.waiter-service input,.sandwich-ingredients input { width: 19px; min-height: 19px; height: 19px; accent-color: #6f0801; }
-.couriers-settings { margin-bottom: 24px; padding: 24px; }.couriers-settings form { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 14px; margin: 20px 0; }.couriers-list>div { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-top: 1px solid #e9dfd2; }.couriers-list span { display: grid; gap: 5px; }.couriers-list small { color: #766a5e; }
+.couriers-settings { margin-bottom: 24px; padding: 24px; }.couriers-settings form { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 14px; margin: 20px 0; }.couriers-list>div { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-top: 1px solid #e9dfd2; }.couriers-list span { display: grid; gap: 5px; }.couriers-list small { color: #766a5e; }
 .waiter-service,.sandwich-ingredients { border: 1px solid #ca923950; border-radius: 12px; padding: 16px; margin: 18px 0; }.waiter-service legend,.sandwich-ingredients legend { font-weight: 750; padding: 0 6px; }.waiter-service p,.sandwich-ingredients p { font-size: 14px; margin-bottom: 10px; color: #766a5e; }.waiter-service label { display: inline-flex; margin-right: 24px; }
 @media (max-width: 640px) { .operation-fields { grid-template-columns: 1fr; }.order-edit-dialog header,.order-edit-dialog footer,.order-edit-body { padding: 16px; }.order-edit-body input,.order-edit-body textarea,.order-edit-body select,.couriers-settings input { font-size: 16px; }.edit-order-option { grid-template-columns: 1fr 44px; }.edit-order-option input:first-child,.edit-order-option input:nth-child(2) { grid-column: 1/-1; }.couriers-settings form { grid-template-columns: 1fr; }.couriers-settings { padding: 18px; } }
 
@@ -51,3 +51,21 @@
 .courier-fee-table { overflow-x: auto; }.courier-fee-table table { width: 100%; border-collapse: collapse; font-size: 14px; }.courier-fee-table th,.courier-fee-table td { padding: 12px 10px; text-align: left; border-bottom: 1px solid #eee8df; }.courier-fee-table th { color: #8a8177; font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .03em; }.courier-fee-table td:nth-child(n+2),.courier-fee-table th:nth-child(n+2) { text-align: right; white-space: nowrap; }.courier-fee-table td>small { display: block; color: #8a8177; font-size: 11px; margin-top: 5px; }.courier-fee-table tfoot td { color: #6f0801; font-weight: 750; border: 0; }
 @media(max-width:850px) { .finance-operational-grid { grid-template-columns: 1fr; } }
 @media(max-width:640px) { .finance-operational-grid>.panel { padding: 17px; }.finance-operational-grid header { flex-wrap: wrap; }.finance-period-control .finance-month-picker input[type=month] { font-size: 16px; width: 160px; }.finance-courier-breakdown header>strong { text-align: left; }.courier-fee-table table { min-width: 510px; }.finance-composition dl>div { font-size: 13px; }.finance-range-popover { left: 0; right: auto; } }
+.catalog-row-actions .catalog-delete-product { color: #8f2417; }
+.customer-address-fields { grid-column: 1/-1; border: 1px solid #e8dfd3; border-radius: 10px; margin: 12px 0; padding: 18px; }
+.customer-address-fields legend { font-size: 14px; font-weight: 700; padding: 0 6px; }
+.customer-address-fields > div { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.customer-address-fields p, .customer-saved-address p { font-size: 13px; line-height: 1.7; color: #776b5d; }
+.product-promotion-settings { border-top: 1px solid #e8dfd3; padding-top: 20px; }
+.product-promotion-settings h3 { margin: 0 0 16px; font-size: 16px; }
+.product-promotion-settings > p, .product-promotion-settings > small { font-size: 12px; color: #807465; line-height: 1.65; }
+.product-promotion-settings fieldset { border: 1px solid #e8dfd3; border-radius: 10px; padding: 14px; margin: 16px 0; }
+.product-promotion-settings legend { font-size: 12px; padding: 0 6px; }
+.promotion-day-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.promotion-day-options > label { display: flex; align-items: center; gap: 6px; padding: 8px; border: 1px solid #e8dfd3; border-radius: 7px; font-size: 11px; cursor: pointer; }
+.promotion-day-options input { width: 15px; height: 15px; min-height: 0; margin: 0; }
+.promotion-day-presets { display: flex; gap: 10px; margin-top: 14px; }
+.promotion-day-presets button { padding: 7px 10px; border: 1px solid #ddcdb7; border-radius: 7px; background: #faf4e9; color: #6f0801; font-size: 11px; }
+@media (max-width: 640px) { .customer-address-fields > div { grid-template-columns: 1fr; } }
+.order-card.order-new.warning { background: #fff8e4; border-color: #d8a330; }
+.order-card.order-new.late { background: #fff0ec; border-color: #c74432; }

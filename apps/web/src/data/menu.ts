@@ -6,6 +6,8 @@ export type Extra = {
 };
 
 export type Product = {
+  basePrice?: number;
+  promotionPercent?: number;
   ingredients?: string[];
   id: string;
   category: string;

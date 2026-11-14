@@ -1,3 +1,4 @@
+import { promotionPrice } from "./utils/pizza";
 import { useTableNavigation } from "./features/cart/useTableNavigation";
 import { emptyPizzaRules, loadPizzaRules, PIZZA_STYLES, type PizzaStyle } from "./services/pizza-rules";
 import { TableCheckout, type TableContext } from "./features/cart/TableCheckout";
@@ -134,7 +135,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
       try {
       const [catalog, config] = await Promise.all([catalogApi.public(), loadPizzaRules()]);
       if (!active) return;
-      const nextRevision = JSON.stringify(config);
+      const nextRevision = JSON.stringify([config,catalog.map(category => category.products.map(product => [product.id,product.price,product.promotionalPrice,product.promotionActive,product.promotionDiscountPercent]))]);
       if (revision && revision !== nextRevision) { if (table && new URLSearchParams(window.location.search).get("etapa") === "checkout") flow.change({ view: "cart" }); else if (!table) setLocalCheckingOut(false); setPricingNotice("Os preços foram atualizados. Confira os valores do carrinho antes de continuar."); }
       revision = nextRevision;
       setRules(config);
@@ -145,9 +146,12 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
         const sizes = (product.sizes ?? []).filter(entry => !common || !config.traditional.length || config.traditional.some(row => row.size === entry.size)).map(entry => ({ ...entry, price: common ? config.traditional.find(row => row.size === entry.size)?.price ?? entry.price : entry.price }));
         if (config.menus?.length && /pizza|premium/i.test(category.name) && !/combo/i.test(category.name) && !stylePrices.length) return [];
         if (!config.menus?.length && product.sizes?.length && !sizes.length) return [];
+        const promotionPercent = product.promotionActive ? Number(product.promotionDiscountPercent ?? 0) : 0;
+        const basePrice = stylePrices.length ? Math.min(...stylePrices.map(entry => entry.price)) : sizes.length ? Math.min(...sizes.map(entry => entry.price)) : Number(promotionPercent > 0 ? product.price : product.promotionalPrice ?? product.price);
         return [{
+        basePrice, promotionPercent,
         id: product.id, category: category.name, name: product.name, description: product.description ?? "",
-        ingredients: product.ingredients ?? [], price: stylePrices.length ? Math.min(...stylePrices.map(entry => entry.price)) : sizes.length ? Math.min(...sizes.map(entry => entry.price)) : Number(product.promotionalPrice ?? product.price), image: catalogImageUrl(product.imageUrl), popular: product.featured,
+        ingredients: product.ingredients ?? [], price: promotionPrice(basePrice,promotionPercent), image: catalogImageUrl(product.imageUrl), popular: product.featured,
         sizes: stylePrices.length ? (["P", "M", "G", "GG"] as const).flatMap(size => { const prices = stylePrices.filter(entry => entry.size === size).map(entry => entry.price); return prices.length ? [{ size, price: Math.min(...prices) }] : []; }) : sizes,
         pizzaSlots: product.pizzaSlots || (/pizza|premium/i.test(category.name) ? 1 : undefined),
         extras: product.optionGroups?.flatMap((group) => group.options.filter((option) => option.active).map((option) => ({ id: option.id, name: option.name, price: Number(option.priceDelta) }))),

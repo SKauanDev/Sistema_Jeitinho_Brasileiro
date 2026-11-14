@@ -40,6 +40,14 @@ export function FinanceModule() {
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState(false);
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
+  const periodControl = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!customRangeOpen) return;
+    const outside = (event: PointerEvent) => { if (!periodControl.current?.contains(event.target as Node)) setCustomRangeOpen(false); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setCustomRangeOpen(false); };
+    document.addEventListener("pointerdown", outside); document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  }, [customRangeOpen]);
   const requestSequence = useRef(0);
   const [saving, setSaving] = useState(false);
   function selectMonth(value: string) {
@@ -97,7 +105,7 @@ export function FinanceModule() {
           <p>Vendas concluídas e fluxo de caixa real da operação.</p>
         </div>
         <div className="finance-title-actions">
-          <div className="finance-period-control">
+          <div className="finance-period-control" ref={periodControl}>
             <label className="finance-month-picker"><CalendarDays size={16} /><span className="sr-only">Mês do financeiro</span><input aria-label="Mês do financeiro" type="month" value={startDate.slice(0, 7)} max={dateValue(new Date()).slice(0, 7)} onChange={event => selectMonth(event.target.value)} /></label>
             <button type="button" className="finance-range-toggle" aria-label="Personalizar período" aria-expanded={customRangeOpen} title="Personalizar período" onClick={() => setCustomRangeOpen(value => !value)}><SlidersHorizontal size={16} /></button>
             {customRangeOpen && <div className="finance-range-popover"><label>De<input type="date" value={startDate} max={endDate} onChange={event => setStartDate(event.target.value)} /></label><label>Até<input type="date" value={endDate} min={startDate} max={dateValue(new Date())} onChange={event => setEndDate(event.target.value)} /></label><button type="button" onClick={() => selectMonth(dateValue(new Date()).slice(0, 7))}>Mês atual</button></div>}

@@ -3,7 +3,7 @@ import { emptyPizzaRules, pizzaKind, type PizzaRules } from "../catalog/pizza-ru
 import { resolveStyledPizza } from "./styled-pizza.js";
 
 export type PizzaSelection = { mode: "whole" | "half"; leftId?: string; rightId?: string; borderId?: string };
-export type PizzaProduct = { id: string; name: string; category: string; pizzaSlots: number; sizes?: unknown; price: unknown; promotionalPrice?: unknown };
+export type PizzaProduct = { id: string; name: string; category: string; pizzaSlots: number; sizes?: unknown; price: unknown; promotionalPrice?: unknown; promotionDays?: unknown; promotionDiscountPercent?: unknown };
 export const isPizzaFlavor = (product: PizzaProduct) => !/combo/i.test(product.category) && (/pizza|premium/i.test(product.category) || product.pizzaSlots === 1);
 
 export function resolvePizzaConfiguration(product: PizzaProduct, size: unknown, selections: unknown, products: Map<string, PizzaProduct>, rules: PizzaRules = emptyPizzaRules(), style?: unknown) {

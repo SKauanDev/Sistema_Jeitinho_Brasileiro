@@ -9,7 +9,7 @@ courierRouter.post("/", async (req, res) => {
   const name = String(req.body.name ?? "").trim();
   let phone: string;
   try { phone = courierPhone(req.body.phone); } catch (error) { res.status(400).json({ message: (error as Error).message }); return; }
-  if (!name || name.length > 120 || phone.length > 30) { res.status(400).json({ message: "Informe nome e telefone válidos." }); return; }
+  if (!name || name.length > 120 || phone.length > 30) { res.status(400).json({ message: "Informe um nome válido para o motoboy." }); return; }
   res.status(201).json(await Courier.create({ name, phone, active: true }));
 });
 courierRouter.patch("/:id", async (req, res) => {

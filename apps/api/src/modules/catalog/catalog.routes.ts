@@ -1,4 +1,5 @@
 import { parseIngredients } from "./ingredients.js";
+import { parsePromotionDays, parsePromotionPercent, publicProductPromotion } from "../promotions/product-promotion.js";
 import { parseSizes } from "./pizza-sizes.js";
 import { Op } from "sequelize";
 import { Router } from "express";
@@ -77,7 +78,8 @@ catalogRouter.get("/", async (_request, response) => {
   // Server-side cache only: no stale CDN copy after an administrator edits a product.
   response.setHeader("Cache-Control", "no-cache");
   const [categories, settings] = await Promise.all([publicCatalog.get(), getStoreSetting()]);
-  response.json(applyCatalogPricing(categories, readPizzaRules(settings.getDataValue("pizzaRules"))));
+  const now = new Date();
+  response.json(applyCatalogPricing(categories, readPizzaRules(settings.getDataValue("pizzaRules"))).map(category => ({...category,products:category.products.map(product => publicProductPromotion(product,now))})));
 });
 
 const cachedImage = createImageCache();
@@ -348,10 +350,10 @@ adminCatalogRouter.post("/products", async (request, response) => {
       .json({ message: "Nome, categoria e preço válido são obrigatórios." });
     return;
   }
-  let sizes; let ingredients;
-  try { sizes = parseSizes(request.body.sizes); ingredients = parseIngredients(request.body.ingredients); } catch (error) { response.status(400).json({ message: (error as Error).message }); return; }
+  let sizes; let ingredients; let promotionDays; let promotionDiscountPercent;
+  try { sizes = parseSizes(request.body.sizes); ingredients = parseIngredients(request.body.ingredients); promotionDays = parsePromotionDays(request.body.promotionDays); promotionDiscountPercent = parsePromotionPercent(request.body.promotionDiscountPercent); } catch (error) { response.status(400).json({ message: (error as Error).message }); return; }
   const product = await Product.create({
-    ingredients, sizes,
+    ingredients, sizes, promotionDays, promotionDiscountPercent,
     name,
     categoryId,
     description: request.body.description,
@@ -373,6 +375,10 @@ adminCatalogRouter.patch("/products/:id", async (request, response) => {
     return;
   }
   const changes: Record<string, unknown> = {};
+  try {
+    if (request.body.promotionDays !== undefined) changes.promotionDays = parsePromotionDays(request.body.promotionDays);
+    if (request.body.promotionDiscountPercent !== undefined) changes.promotionDiscountPercent = parsePromotionPercent(request.body.promotionDiscountPercent);
+  } catch(error) { response.status(400).json({message:(error as Error).message}); return; }
   if (request.body.ingredients !== undefined) { try { changes.ingredients = parseIngredients(request.body.ingredients); } catch (error) { response.status(400).json({ message: (error as Error).message }); return; } }
   if (request.body.sizes !== undefined) {
     try { changes.sizes = parseSizes(request.body.sizes); } catch (error) { response.status(400).json({ message: (error as Error).message }); return; }

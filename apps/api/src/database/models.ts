@@ -33,6 +33,7 @@ export const CustomerAccount = sequelize.define("CustomerAccount", {
   active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
 }, { tableName: "customer_accounts" });
 export const CustomerRecord = sequelize.define("CustomerRecord", {
+  address: DataTypes.JSON,
   id, originalPhone: { type: DataTypes.STRING(13), allowNull: false, unique: true },
   phone: { type: DataTypes.STRING(13), allowNull: false, unique: true },
   aliases: { type: DataTypes.JSON, allowNull: false },
@@ -61,6 +62,8 @@ export const Category = sequelize.define("Category", {
 }, { tableName: "categories" });
 
 export const Product = sequelize.define("Product", {
+  promotionDays: DataTypes.JSON,
+  promotionDiscountPercent: DataTypes.DECIMAL(5, 2),
   id,
   ingredients: DataTypes.JSON,
   categoryId: { type: DataTypes.UUID, allowNull: false },

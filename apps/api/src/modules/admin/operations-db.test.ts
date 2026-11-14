@@ -19,7 +19,7 @@ test("MySQL: ingredientes e preço fixo; Online manual; correções auditadas, e
   const categoryId = randomUUID(), productId = randomUUID(), inventoryId = randomUUID(), tableId = randomUUID(), kitchenId = randomUUID(), key = randomBytes(32).toString("hex"), phone = `329${String(Date.now()).slice(-8)}`;
   const number = 1000000 + Math.floor(Math.random() * 1000000);
   const base = await getStoreSetting();
-  const settings = StoreSetting.build({ ...base.get({ plain: true }), tableCount: number, autoAcceptOrders: false, allowPickup: true, allowDelivery: true, cashEnabled: true, cardOnDeliveryEnabled: true, onlinePaymentEnabled: true, pixEnabled: true, fixedDeliveryFee: 5, city: "Cidade QA", state: "MG", minimumOrder: 0 });
+  const settings = StoreSetting.build({ ...base.get({ plain: true }), tableCount: number, autoAcceptOrders: true, allowPickup: true, allowDelivery: true, cashEnabled: true, cardOnDeliveryEnabled: true, onlinePaymentEnabled: true, pixEnabled: true, fixedDeliveryFee: 5, city: "Cidade QA", state: "MG", minimumOrder: 0 });
   const app = express(); app.use(express.json()); app.use("/orders", createOrderRouter({ settings: async () => settings, isOpen: async () => true })); app.use("/admin/order-edits", orderEditRouter); app.use("/admin/couriers", courierRouter); app.use("/admin", adminRouter);
   const events: string[] = []; app.set("io", { to: () => ({ emit: (name: string) => events.push(name) }) });
   const server = app.listen(0, "127.0.0.1"); await once(server, "listening");
@@ -78,7 +78,7 @@ test("MySQL: ingredientes e preço fixo; Online manual; correções auditadas, e
     for (const paymentMethod of ["CASH", "PIX", "CREDIT_CARD", "DEBIT_CARD"]) {
       const delivery = await send("/orders", { ...customer, fulfillmentType: "DELIVERY", paymentMethod, address: { street: "Rua QA", number: "123", neighborhood: "Bairro QA", city: "Cidade QA", state: "MG", postalCode: "36000000" }, items: [{ ...item, quantity: 1 }] });
       assert.equal(delivery.status,201,await delivery.clone().text()); const deliveryId = (await delivery.json()).id; ids.push(deliveryId);
-      const delivered = await read(deliveryId); assert.equal(delivered.customerName,customer.customerName); assert.equal(delivered.number,"123"); assert.equal(Number(delivered.deliveryFee),5); assert.equal(delivered.paymentStatus,"NOT_REQUIRED"); assert.equal(delivered.paidAt,null); assert.equal(delivered.paymentExpiresAt,null); assert.equal(delivered.paymentExternalId,null); assert.equal(delivered.paymentCheckoutUrl,null); assert.equal(delivered.pixCopyPaste,null); assert.equal(delivered.customerDocument,null); assert.equal(delivered.customerEmail,null);
+      const delivered = await read(deliveryId); assert.equal(delivered.customerName,customer.customerName); assert.equal(delivered.number,"123"); assert.equal(delivered.status,"NEW"); assert.equal(Number(delivered.deliveryFee),5); assert.equal(delivered.paymentStatus,"NOT_REQUIRED"); assert.equal(delivered.paidAt,null); assert.equal(delivered.paymentExpiresAt,null); assert.equal(delivered.paymentExternalId,null); assert.equal(delivered.paymentCheckoutUrl,null); assert.equal(delivered.pixCopyPaste,null); assert.equal(delivered.customerDocument,null); assert.equal(delivered.customerEmail,null);
       if (paymentMethod === "PIX") {
         await Order.update({paymentStatus:"PENDING"},{where:{id:deliveryId}});
         const advance = await send(`/admin/orders/${deliveryId}/status`,{status:"CONFIRMED"},token,"PATCH"); assert.equal(advance.status,200,await advance.clone().text());

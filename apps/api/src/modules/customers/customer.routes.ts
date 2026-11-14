@@ -1,4 +1,5 @@
 import { compare, hash } from "bcryptjs";
+import { parseCustomerAddress } from "./customer-address.js";
 import { Op, QueryTypes } from "sequelize";
 import { Router } from "express";
 import jwt from "jsonwebtoken";
@@ -28,7 +29,9 @@ async function customerProfile(phone: string, customerAccountId?: string) {
   const orders = await Order.findAll({ where: customerAccountId ? { customerAccountId } : { customerPhone: rows.map((row) => row.customerPhone) }, include: [{ model: OrderItem, as: "items", include: [{ model: OrderItemOption, as: "selectedOptions" }] }, { model: OrderStatusHistory, as: "statusHistory" }], order: [["createdAt", "DESC"]] });
   const contact = await CustomerAccount.findOne({ where: customerAccountId ? { id: customerAccountId } : { phone: customerAliases(record, phone) }, attributes: ["email"] });
   const plain = orders.map((order) => order.get({ plain: true }) as Record<string, unknown>); const completed = plain.filter((order) => order.status === "COMPLETED"); const totalSpent = completed.reduce((sum, order) => sum + Number(order.total), 0);
-  return { id: record?.getDataValue("originalPhone") ?? phone, name: record?.getDataValue("name") ?? plain[0]?.customerName, phone: record?.getDataValue("phone") ?? plain[0]?.customerPhone, email: contact?.getDataValue("email") ?? record?.getDataValue("email"), customerSince: plain.at(-1)?.createdAt ?? record?.getDataValue("createdAt"), lastOrderAt: plain[0]?.createdAt ?? record?.getDataValue("createdAt"), ordersCount: plain.length, completedOrders: completed.length, totalSpent, averageTicket: completed.length ? totalSpent / completed.length : 0, orders };
+  const lastDelivery = plain.find(order => order.fulfillmentType === "DELIVERY" && order.street);
+  const address = record?.getDataValue("address") ?? (lastDelivery ? Object.fromEntries(["street","number","neighborhood","city","state","postalCode","complement"].map(key => [key,String(lastDelivery[key] ?? "")])) : null);
+  return { address, id: record?.getDataValue("originalPhone") ?? phone, name: record?.getDataValue("name") ?? plain[0]?.customerName, phone: record?.getDataValue("phone") ?? plain[0]?.customerPhone, email: contact?.getDataValue("email") ?? record?.getDataValue("email"), customerSince: plain.at(-1)?.createdAt ?? record?.getDataValue("createdAt"), lastOrderAt: plain[0]?.createdAt ?? record?.getDataValue("createdAt"), ordersCount: plain.length, completedOrders: completed.length, totalSpent, averageTicket: completed.length ? totalSpent / completed.length : 0, orders };
 }
 function customerToken(account: any) { return jwt.sign({ sub: String(account.getDataValue("id")), phone: String(account.getDataValue("phone")), role: "CUSTOMER" }, env.jwtSecret, { expiresIn: "30d" }); }
 async function authenticatedProfile(account: any) {
@@ -187,6 +190,8 @@ customerRouter.patch("/:phone", async (request, response) => {
   const originalPhone = cleanPhone(request.params.phone), phone = cleanPhone(request.body.phone);
   const name = String(request.body.name ?? "").trim(), email = String(request.body.email ?? "").trim().toLowerCase();
   if (!name || name.length > 120 || phone.length < 10 || String(request.body.phone ?? "").replace(/\D/g, "").length > 13 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || email.length > 254) { response.status(400).json({ message: "Informe nome, telefone e e-mail v\u00e1lidos." }); return; }
+  let address: Record<string,string> | undefined;
+  if (request.body.address !== undefined) { try { address = parseCustomerAddress(request.body.address); } catch(error) { response.status(400).json({message:(error as Error).message}); return; } }
   if (!await customerProfile(originalPhone)) { response.status(404).json({ message: "Cliente n\u00e3o encontrado." }); return; }
   try {
     await sequelize.transaction(async transaction => {
@@ -201,7 +206,7 @@ customerRouter.patch("/:phone", async (request, response) => {
       const account = accounts[0];
       if (await CustomerAccount.findOne({ where: { phone, ...(account ? { id: { [Op.ne]: account.getDataValue("id") } } : {}) }, transaction })) throw Error("Telefone vinculado a outra conta.");
       if (account) await account.update({ phone, email: email || null, ...(account.getDataValue("email") !== (email || null) ? { emailVerifiedAt: null, pendingEmail: null, emailCodeHash: null, emailCodeExpiresAt: null, emailCodePurpose: null } : {}) }, { transaction });
-      const values = { phone, name, email: email || null, aliases: [...new Set([...aliases, phone])] };
+      const values = { phone, name, email: email || null, ...(address !== undefined ? { address } : {}), aliases: [...new Set([...aliases, phone])] };
       if (record) await record.update(values, { transaction }); else await CustomerRecord.create({ originalPhone, ...values }, { transaction });
     });
     response.json(await customerProfile(originalPhone));

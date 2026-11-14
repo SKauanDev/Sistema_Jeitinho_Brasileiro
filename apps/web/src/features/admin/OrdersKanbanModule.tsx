@@ -1,4 +1,5 @@
 import { isCounterPayment, isPaymentWaiting } from "../order-status/order-presentation";
+import { newOrderMinutes, newOrderSeverity } from "../../utils/order-waiting";
 import { finishedOrderLabel, orderFinishedAt, orderIsFinished } from "../../utils/order-age";
 import { OrderEditDialog } from "./OrderEditDialog";
 import { ManualOrderDialog } from "./ManualOrderDialog";
@@ -340,11 +341,11 @@ function OrderCard({
 }) {
   const minutes = Math.max(
     0,
-    Math.floor((now - new Date(order.createdAt).getTime()) / 60_000),
+    order.status === "NEW" ? newOrderMinutes(order, now) : Math.floor((now - new Date(order.createdAt).getTime()) / 60_000),
   );
   const finished = orderIsFinished(order);
   const severity =
-    finished ? "normal" : minutes > averageMinutes
+    finished ? "normal" : order.status === "NEW" ? newOrderSeverity(order, now) : minutes > averageMinutes
       ? "late"
       : minutes > averageMinutes / 2
         ? "warning"
@@ -353,7 +354,7 @@ function OrderCard({
     <article
       draggable={!finished}
       onDragStart={(event) => event.dataTransfer.setData("order-id", order.id)}
-      className={`order-card ${severity}`}
+      className={`order-card ${order.status === "NEW" ? "order-new" : ""} ${severity}`}
     >
       <header>
         <strong>#{order.displayNumber}</strong>

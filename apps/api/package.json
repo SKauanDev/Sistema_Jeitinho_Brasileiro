@@ -37,6 +37,7 @@
     "db:migrate-inventory-removal": "tsx src/database/migrate-inventory-removal.ts",
     "db:migrate-operations": "tsx src/database/migrate-operations.ts",
     "db:migrate-customer-management": "tsx src/database/migrate-customer-management.ts",
+    "db:migrate-operational-refinements": "tsx src/database/migrate-operational-refinements.ts",
     "db:set-developer": "tsx src/database/set-developer.ts"
   },
   "dependencies": {

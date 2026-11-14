@@ -383,17 +383,7 @@ export function SettingsModule() {
           description="Defina como o checkout e o atendimento funcionam."
         >
           <div className="settings-options">
-            <Option
-              title="Aceitar pedidos automaticamente"
-              description="Novos pedidos podem ser confirmados sem ação manual."
-            >
-              <Toggle
-                checked={store.autoAcceptOrders}
-                onChange={(value) =>
-                  setStore({ ...store, autoAcceptOrders: value })
-                }
-              />
-            </Option>
+
             <Option
               title="Permitir retirada"
               description="Cliente pode selecionar retirada no checkout."
@@ -509,7 +499,7 @@ export function SettingsModule() {
             <Option
               icon={<Smartphone />}
               title="PIX"
-              description="Pagamento por chave PIX."
+              description="Disponibiliza Pix como forma de pagamento."
             >
               <Toggle
                 checked={store.pixEnabled}
@@ -540,19 +530,6 @@ export function SettingsModule() {
             </Option>
           </div>
           <p className="table-payment-note">Pagamento online já recebido é exclusivo de Adicionar pedido manual, na Central de pedidos.</p>
-          {store.pixEnabled && (
-            <div className="settings-form">
-              <Field label="Chave PIX" wide>
-                <input
-                  value={store.pixKey ?? ""}
-                  onChange={(e) =>
-                    setStore({ ...store, pixKey: e.target.value })
-                  }
-                  placeholder="CPF, CNPJ, telefone, e-mail ou chave aleatória"
-                />
-              </Field>
-            </div>
-          )}
           <SaveButton saving={saving} onClick={() => void saveStore()} />
         </SettingsPanel>
       )}

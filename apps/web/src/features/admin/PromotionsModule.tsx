@@ -230,10 +230,10 @@ export function PromotionsModule() {
                 )}
                 <span>
                   <strong>{product.name}</strong>
-                  <small>{product.category?.name}</small>
+                  <small>{product.category?.name}</small><small>{product.promotionDays?.length ? product.promotionDays.map(day => ["DOM","SEG","TER","QUA","QUI","SEX","SÁB"][day]).join(" / ") : "Todos os dias"}</small>
                 </span>
-                <del>{currency(product.price)}</del>
-                <b>{currency(product.promotionalPrice)}</b>
+                <del>{product.promotionDiscountPercent ? "" : currency(product.price)}</del>
+                <b>{product.promotionDiscountPercent ? `${Number(product.promotionDiscountPercent)}% OFF` : currency(product.promotionalPrice)}</b>
               </article>
             ))}
           </div>

@@ -361,7 +361,7 @@ npm run db:migrate-operations -w @urfood/api
 
 A migração adiciona colunas e tabelas, preserva os pedidos e atualiza a regra de consistência dos totais para incluir o serviço. É segura para repetir. Ao atualizar o VPS, compile e reinicie a API e publique o frontend na Vercel.
 
-- **Configurações → Entrega → Motoboys:** cadastre nome e telefone com máscara brasileira. É possível desativar, reativar ou excluir pela lixeira. A exclusão preserva o nome e as taxas nos pedidos anteriores; motoboys excluídos não podem ser atribuídos a novos pedidos.
+- **Configurações → Entrega → Motoboys:** cadastre somente o nome. É possível desativar, reativar ou excluir pela lixeira. A exclusão preserva o nome e as taxas nos pedidos anteriores; motoboys excluídos não podem ser atribuídos a novos pedidos. As regiões de entrega continuam configuráveis separadamente.
 - **Pedidos → abrir pedido → Editar pedido / recebimento:** ao lado da taxa de entrega, selecione o motoboy. O mesmo formulário corrige cliente, endereço, atendimento, mesa, status, itens, quantidades, opções, preços, descontos, taxas, observações e recebimento, inclusive em pedidos finalizados ou cancelados. Informe o motivo. Atualizações concorrentes são recusadas. O sistema registra antes/depois e autor, ajusta estoque por revisão e recalcula o total da conta encerrada quando houver.
 - **Formas de pagamento:** no cardápio público, Pix, dinheiro, crédito e débito apenas registram a escolha do cliente. Todos entram no fluxo de preparo sem confirmação de pagamento, documento, e-mail, cobrança, QR de pagamento ou checkout externo. A API grava `NOT_REQUIRED`, sem marcar o valor como já recebido. Online é exclusivo do pedido manual autenticado; a API bloqueia essa opção no público. **Pagamento online já recebido** registra o recebimento informado pela equipe no pedido manual. Não há webhook, SDK nem consulta periódica ao Mercado Pago no fluxo ativo. O perfil Cozinha não pode editar valores ou recebimentos.
 - **Comanda mobile:** na finalização, escolha Sim ou Não para a taxa opcional de 10% do garçom; o padrão é Não. O resumo mostra o acréscimo antes do envio. O servidor calcula sobre o subtotal líquido de desconto, sem taxa de entrega ou taxa digital. A impressão, consumo e fechamento incluem o valor aceito. A equipe pode corrigir a escolha pelo editor.
@@ -396,6 +396,26 @@ Pedidos finalizados mostram **hoje**, **ontem** ou **há N dias**, além da data
 O seletor compacto de mês mostra o mês atual até hoje; o botão ao lado permite escolher um intervalo. As datas dos pedidos seguem o fuso de São Paulo. O faturamento considera pedidos concluídos, independentemente da confirmação manual do recebimento; lançamentos de caixa continuam separados.
 
 A composição apresenta produtos, descontos, entrega, serviço do garçom e taxa digital. As taxas já integram o total dos pedidos e não são somadas novamente. O serviço mostra também a base de cálculo e a quantidade de pedidos com cobrança. As entregas são agrupadas pelo motoboy atribuído ao pedido, com uma linha para as sem responsável; excluir um cadastro preserva seus valores históricos. O gráfico compara entrega, consumo interno e retirada por faturamento ou quantidade de pedidos.
+
+## Operação, endereço do cliente e promoções por dia
+
+Na atualização do VPS, antes de iniciar a API, execute:
+
+```bash
+npm run db:migrate-operational-refinements -w @urfood/api
+npm run build -w @urfood/api
+pm2 restart jeitinho-api --update-env
+```
+
+A migração é aditiva e pode ser repetida; adiciona o endereço do cadastro de clientes e a agenda de promoções, sem alterar preços existentes. Publique também o frontend atualizado.
+
+Todo pedido entra em **Novos**, incluindo pedidos manuais e comandas. A configuração antiga de aceite automático é ignorada. Enquanto permanecer em Novos, o sistema emite lembrete sonoro a cada 10 minutos, fica amarelo aos 20 e vermelho aos 30. O tempo considera a última entrada em Novos. Lembretes param quando o pedido avança. A equipe precisa manter o painel aberto e o som ativado; a interface informa quando o navegador ainda exige ativação.
+
+Em **Clientes → Editar cliente**, informe CEP, rua, número, bairro, cidade, UF e complemento. O cadastro mostra inicialmente o endereço da última entrega quando ainda não há endereço salvo. Corrigir o cadastro preserva os endereços dos pedidos anteriores.
+
+Em **Cardápio → Editar produto → Promoção automática**, escolha os dias da semana, usando o atalho **QUA / QUI / SEX** quando desejado. Produtos de preço único podem usar o preço promocional existente; o percentual também funciona em pizzas por estilo e tamanho. Não há desconto em bordas ou adicionais. No meio a meio, aplica-se o menor percentual dos sabores escolhidos. Fora dos dias marcados, o preço normal volta automaticamente, pelo fuso de São Paulo. O backend recalcula o preço ao confirmar o pedido. Nenhum desconto foi cadastrado automaticamente: preencha os valores comerciais no admin. Cupons mantêm suas próprias regras de validade.
+
+Cada produto possui uma lixeira ao lado da edição. O filtro de datas do Financeiro fecha ao clicar fora ou pressionar Escape. O cadastro de motoboy mostra apenas nome; as regiões de entrega permanecem. A chave Pix foi retirada das configurações, já que o sistema registra somente a forma de pagamento.
 
 ## Comandos úteis
 
