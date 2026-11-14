@@ -3,9 +3,9 @@ import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { devApiTarget } from "../../scripts/dev-api-target.mjs";
 
-const apiTarget = devApiTarget();
-
-export default defineConfig({
+export default defineConfig(({ command }) => {
+  const apiTarget = command === "serve" ? devApiTarget() : "http://127.0.0.1:3333";
+  return {
   plugins: [react()],
   server: {
     port: 5173,
@@ -20,4 +20,5 @@ export default defineConfig({
       "/socket.io": { target: apiTarget.replace(/^http/, "ws"), ws: true },
     },
   },
+  };
 });
