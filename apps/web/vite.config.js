@@ -1,6 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
+import { devApiTarget } from "../../scripts/dev-api-target.mjs";
+var apiTarget = devApiTarget();
 export default defineConfig({
     plugins: [react()],
     server: {
@@ -12,8 +14,8 @@ export default defineConfig({
         },
         allowedHosts: [".ngrok-free.dev", ".ngrok-free.app"],
         proxy: {
-            "/api": { target: "http://localhost:3333", changeOrigin: true, rewrite: function (path) { return path.replace(/^\/api/, ""); } },
-            "/socket.io": { target: "ws://localhost:3333", ws: true },
+            "/api": { target: apiTarget, changeOrigin: true, rewrite: function (path) { return path.replace(/^\/api/, ""); } },
+            "/socket.io": { target: apiTarget.replace(/^http/, "ws"), ws: true },
         },
     },
 });

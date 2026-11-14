@@ -8,6 +8,7 @@ import "./styles.css";
 import "./admin.css";
 import "./pizza.css";
 import "./theme.css";
+import "./operations.css";
 
 const App = lazy(() => import("./App"));
 const TableMenuPage = lazy(() => import("./pages/TableMenuPage").then(module => ({ default: module.TableMenuPage })));
@@ -17,8 +18,6 @@ const AdminPage = lazy(() => import("./pages/AdminPage").then(module => ({ defau
 const OrderStatusPage = lazy(() => import("./pages/OrderStatusPage").then(module => ({ default: module.OrderStatusPage })));
 const MyOrdersPage = lazy(() => import("./pages/MyOrdersPage").then(module => ({ default: module.MyOrdersPage })));
 const CustomerProfilePage = lazy(() => import("./pages/CustomerProfilePage").then(module => ({ default: module.CustomerProfilePage })));
-const PixPaymentPage = lazy(() => import("./pages/PixPaymentPage").then(module => ({ default: module.PixPaymentPage })));
-const CardPaymentPage = lazy(() => import("./pages/CardPaymentPage").then(module => ({ default: module.CardPaymentPage })));
 const DashboardModule = lazy(() => import("./features/admin/DashboardModule").then(module => ({ default: module.DashboardModule })));
 const OrdersKanbanModule = lazy(() => import("./features/admin/OrdersKanbanModule").then(module => ({ default: module.OrdersKanbanModule })));
 const CatalogModule = lazy(() => import("./features/admin/CatalogModule").then(module => ({ default: module.CatalogModule })));
@@ -53,8 +52,6 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/mesa/:key" element={<TableMenuPage />} />
         <Route path="/comanda" element={<TableScanPage />} />
         <Route path="/status/:id" element={<OrderStatusPage />} />
-        <Route path="/pagamento/pix/:id" element={<PixPaymentPage />} />
-        <Route path="/pagamento/cartao/:id" element={<CardPaymentPage />} />
         <Route path="/meus-pedidos" element={<MyOrdersPage />} />
         <Route path="/perfil" element={<CustomerProfilePage />} />
         <Route element={<ProtectedAdmin />}>

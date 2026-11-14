@@ -1,3 +1,4 @@
+import { CouriersSettings } from "./CouriersSettings";
 import { useEffect, useState } from "react";
 import {
   AlertCircle,
@@ -452,6 +453,7 @@ export function SettingsModule() {
           <SaveButton saving={saving} onClick={() => void saveStore()} />
         </SettingsPanel>
       )}
+      {tab === "delivery" && <CouriersSettings />}
       {tab === "delivery" && (
         <SettingsPanel
           title="Regiões de entrega"
@@ -539,7 +541,7 @@ export function SettingsModule() {
             <Option
               icon={<CreditCard />}
               title="Pagamento online"
-              description="Preparado para integração futura."
+              description="Registro sem cobrança automática. A equipe confirma o recebimento no pedido."
             >
               <Toggle
                 checked={store.onlinePaymentEnabled}

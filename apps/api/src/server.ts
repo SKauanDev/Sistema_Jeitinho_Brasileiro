@@ -1,3 +1,4 @@
+import { developerCleanupRouter } from "./modules/admin/developer-cleanup.routes.js";
 import http from "node:http";
 import cors from "cors";
 import express from "express";
@@ -27,14 +28,13 @@ import {
   publicPromotionRouter,
 } from "./modules/promotions/promotion.routes.js";
 import { reportRouter } from "./modules/reports/report.routes.js";
+import { courierRouter } from "./modules/settings/courier.routes.js";
+import { orderEditRouter } from "./modules/admin/order-edit.routes.js";
 import { settingsRouter } from "./modules/settings/settings.routes.js";
-import { mercadoPagoRouter } from "./modules/payments/mercado-pago.routes.js";
-import { reconcilePendingPayments } from "./modules/payments/mercado-pago.service.js";
 import { purgeExpiredCatalogTrash } from "./modules/catalog/catalog-cleanup.service.js";
 import { userRouter } from "./modules/users/user.routes.js";
 import { syncCatalogInventory } from "./modules/inventory/catalog-inventory.service.js";
 import { deliveryRouter } from "./modules/delivery/delivery.routes.js";
-import { expireUnpaidOrders } from "./modules/payments/payment-timeout.service.js";
 import { configureSocketSecurity } from "./realtime/socket-security.js";
 import { apiErrorHandler, createRateLimit, securityHeaders } from "./shared/http-security.js";
 
@@ -68,7 +68,6 @@ const regularOrderLimit = createRateLimit(30, 10 * 60_000);
 // Tables share the restaurant Wi-Fi public IP; keep room for all tables ordering.
 const tableOrderLimit = createRateLimit(300, 10 * 60_000);
 app.post("/orders", (request, response, next) => (request.body?.table ? tableOrderLimit : regularOrderLimit)(request, response, next));
-app.post("/payments/mercado-pago/card/orders/:orderId", createRateLimit(10, 10 * 60_000));
 app.use("/auth", authRouter);
 app.use("/orders", orderRouter);
 app.use("/pizza-rules", pizzaRulesRouter);
@@ -76,8 +75,10 @@ app.use("/tables", diningRouter);
 app.use("/catalog", catalogRouter);
 app.use("/coupons", publicPromotionRouter);
 app.use("/customers", publicCustomerRouter);
-app.use("/payments/mercado-pago", mercadoPagoRouter);
 app.use("/delivery", deliveryRouter);
+app.use("/admin/cleanup", developerCleanupRouter);
+app.use("/admin/order-edits", orderEditRouter);
+app.use("/admin/couriers", courierRouter);
 app.use("/admin", adminRouter);
 app.use("/admin/tables", adminDiningRouter);
 app.use("/admin/catalog", adminCatalogRouter);
@@ -94,21 +95,9 @@ app.use(apiErrorHandler);
 async function start(): Promise<void> {
   await sequelize.authenticate();
   await syncCatalogInventory();
-  await expireUnpaidOrders(io);
   httpServer.listen(env.port, env.host, () => {
     console.log(`API UrFood disponível em http://${env.host}:${env.port}`);
   });
-  let expiring = false;
-  setInterval(() => {
-    if (expiring) return;
-    expiring = true;
-    void expireUnpaidOrders(io).catch(error => console.error("Falha ao cancelar pedidos sem pagamento:", error)).finally(() => { expiring = false; });
-  }, 1000).unref();
-  setInterval(() => {
-    void reconcilePendingPayments(io).catch((error) =>
-      console.error("Falha ao expirar cobranças PIX:", error),
-    );
-  }, 30_000).unref();
   void purgeExpiredCatalogTrash().catch((error) =>
     console.error("Falha ao limpar a lixeira do cardápio:", error),
   );

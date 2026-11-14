@@ -1,4 +1,3 @@
-import { preloadPayment } from "../../services/payment-bootstrap";
 import { FormEvent, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, Bike, CircleHelp, LoaderCircle, MapPin, ShieldCheck, Store, X } from "lucide-react";
@@ -9,6 +8,7 @@ import { formatCurrencyField, parseCurrencyField } from "../../utils/currency-fi
 const DIGITAL_SECURITY_FEE = 0.99;
 
 export type CheckoutItem = {
+  ingredients?: string[];
   style?: string;
   size?: string;
   pizzaSelections?: Array<{ mode: "whole" | "half"; leftId?: string; rightId?: string; borderId?: string }>;
@@ -124,9 +124,9 @@ export function CheckoutForm({
     ? [
         config.payments.pix && ["PIX", "PIX"],
         config.payments.cash && ["CASH", "Dinheiro"],
-        config.payments.cardOnDelivery && ["ONLINE", "Cartão na entrega"],
-        config.payments.onlineCard && ["CREDIT_CARD", "Crédito online"],
-        config.payments.onlineCard && ["DEBIT_CARD", "Débito online"],
+        config.payments.onlineCard && ["ONLINE", "Online (confirmado pela equipe)"],
+        config.payments.cardOnDelivery && ["CREDIT_CARD", "Crédito na entrega"],
+        config.payments.cardOnDelivery && ["DEBIT_CARD", "Débito na entrega"],
       ].filter((item): item is [PaymentMethod, string] => Boolean(item))
     : [];
   if (manual) availablePayments.push(["RECEIVED_ONLINE", "Pagamento online já recebido"]);
@@ -146,11 +146,11 @@ export function CheckoutForm({
         const first: PaymentMethod | undefined = result.payments.cash
           ? "CASH"
           : result.payments.cardOnDelivery
-            ? "ONLINE"
+            ? "CREDIT_CARD"
             : result.payments.pix
               ? "PIX"
               : result.payments.onlineCard
-                ? "CREDIT_CARD"
+                ? "ONLINE"
                 : undefined;
         if (first) setPaymentMethod(first);
       })
@@ -583,7 +583,7 @@ export function CheckoutForm({
             <button
               type="button"
               className={paymentMethod === value ? "active" : ""}
-              onClick={() => { preloadPayment(value); setPaymentMethod(value); }}
+              onClick={() => { setPaymentMethod(value); }}
               key={value}
             >
               {label}
@@ -602,24 +602,7 @@ export function CheckoutForm({
           </label>
         )}
       </section>
-      {["PIX", "CREDIT_CARD", "DEBIT_CARD"].includes(paymentMethod) && (
-        <div className="checkout-fields">
-          <label>
-            E-mail do pagador
-            <input
-              name="email"
-              required
-              type="email"
-              autoComplete="email"
-              placeholder="voce@email.com"
-            />
-          </label>
-          {(["CREDIT_CARD", "DEBIT_CARD"].includes(paymentMethod)) && <label>
-            CPF ou CNPJ do pagador
-            <input name="document" required inputMode="numeric" autoComplete="off" pattern="[0-9.\-/ ]{11,18}" placeholder="CPF ou CNPJ" />
-          </label>}
-        </div>
-      )}
+      {paymentMethod !== "CASH" && <p className="table-payment-note">O pagamento será conferido pela equipe. Este pedido não gera cobrança automática.</p>}
       {error && <p className="checkout-error">{error}</p>}
       <div className="checkout-totals">
         <div>

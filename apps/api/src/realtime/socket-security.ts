@@ -6,7 +6,7 @@ import { CustomerAccount, Order, User } from "../database/models.js";
 export const ADMIN_ROOM = "admin:authenticated";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const phone = (value: unknown) => String(value ?? "").replace(/\D/g, "");
-export type SocketIdentity = { role: "ADMIN" | "OPERATOR" | "KITCHEN" | "CUSTOMER" | "ORDER_TRACKING"; sub?: string; phone?: string; orderId?: string; exp: number };
+export type SocketIdentity = { role: "ADMIN" | "OPERATOR" | "KITCHEN" | "CUSTOMER" | "ORDER_TRACKING"; isDeveloper?: boolean; sub?: string; phone?: string; orderId?: string; exp: number };
 export const orderTrackingToken = (orderId: string) => jwt.sign({ role: "ORDER_TRACKING", orderId }, env.jwtSecret, { expiresIn: "7d", audience: "urfood-order-tracking" });
 
 export async function resolveIdentity(claims: JwtPayload): Promise<SocketIdentity | null> {
@@ -19,7 +19,7 @@ export async function resolveIdentity(claims: JwtPayload): Promise<SocketIdentit
   if (["ADMIN", "OPERATOR", "KITCHEN"].includes(claims.role)) {
     const account = await User.findByPk(claims.sub);
     if (!account?.getDataValue("active") || account.getDataValue("role") !== claims.role) return null;
-    return { role: claims.role, sub: claims.sub, exp: claims.exp };
+    return { role: claims.role, sub: claims.sub, exp: claims.exp, isDeveloper: Boolean(account.getDataValue("isDeveloper")) };
   }
   if (claims.role === "CUSTOMER") {
     const account = await CustomerAccount.findByPk(claims.sub);

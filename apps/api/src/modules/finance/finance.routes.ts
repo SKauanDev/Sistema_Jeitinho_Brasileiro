@@ -1,53 +1,28 @@
+import { salesSummary } from "./sales-summary.js";
+import { businessDate, financialPeriod } from "./financial-period.js";
 import { Op } from "sequelize";
 import { Router } from "express";
-import { FinancialEntry, Order } from "../../database/models.js";
+import { FinancialEntry, Order, Courier } from "../../database/models.js";
 import { requireAdmin, requireAuth } from "../../shared/auth.middleware.js";
 
 export const financeRouter = Router();
 financeRouter.use(requireAuth, requireAdmin);
-function range(period: string, customStart?: string, customEnd?: string) {
-  const now = new Date();
-  const end = new Date(now);
-  let start = new Date(now);
-  if (period === "custom" && customStart && customEnd) {
-    start = new Date(`${customStart}T00:00:00`);
-    end.setTime(new Date(`${customEnd}T23:59:59.999`).getTime());
-  } else if (period === "7d") start.setDate(start.getDate() - 7);
-  else if (period === "30d") start.setDate(start.getDate() - 30);
-  else if (period === "month")
-    start = new Date(now.getFullYear(), now.getMonth(), 1);
-  else if (period === "previous_month") {
-    start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    end.setTime(
-      new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999).getTime(),
-    );
-  } else if (period === "yesterday") {
-    start.setDate(start.getDate() - 1);
-    start.setHours(0, 0, 0, 0);
-    end.setDate(end.getDate() - 1);
-    end.setHours(23, 59, 59, 999);
-  } else start.setHours(0, 0, 0, 0);
-  return { start, end };
-}
 const number = (value: unknown) => Number(value ?? 0);
 const paymentNames: Record<string, string> = {
   PIX: "PIX",
   CASH: "Dinheiro",
-  CREDIT_CARD: "Cartão de crédito online",
-  DEBIT_CARD: "Cartão de débito online",
-  ONLINE: "Cartão na entrega",
+  CREDIT_CARD: "Cartão de crédito",
+  DEBIT_CARD: "Cartão de débito",
+  ONLINE: "Online",
   RECEIVED_ONLINE: "Pagamento online recebido",
 };
 
 financeRouter.get("/", async (request, response) => {
-  const { start, end } = range(
-    String(request.query.period ?? "today"),
-    String(request.query.start ?? ""),
-    String(request.query.end ?? ""),
-  );
-  const startDate = start.toISOString().slice(0, 10);
-  const endDate = end.toISOString().slice(0, 10);
-  const [orders, entries] = await Promise.all([
+  let selected;
+  try { selected = financialPeriod(String(request.query.period ?? "today"), String(request.query.start ?? ""), String(request.query.end ?? "")); }
+  catch (error) { response.status(400).json({ message: (error as Error).message }); return; }
+  const { start, end, startDate, endDate } = selected;
+  const [orders, entries, couriers] = await Promise.all([
     Order.findAll({
       where: { createdAt: { [Op.between]: [start, end] } },
       order: [["createdAt", "DESC"]],
@@ -59,16 +34,14 @@ financeRouter.get("/", async (request, response) => {
         ["createdAt", "DESC"],
       ],
     }),
+    Courier.findAll({ attributes: ["id", "name", "active"] }),
   ]);
   const plainOrders = orders.map(
     (item) => item.get({ plain: true }) as Record<string, unknown>,
   );
   const completed = plainOrders.filter((item) => item.status === "COMPLETED");
-  const revenue = completed.reduce((sum, item) => sum + number(item.total), 0);
-  const deliveryFees = completed.reduce(
-    (sum, item) => sum + number(item.deliveryFee),
-    0,
-  );
+  const summary = salesSummary(plainOrders, couriers.map(courier => courier.get({ plain: true })));
+  const revenue = summary.composition.total, deliveryFees = summary.composition.deliveryFees;
   const plainEntries = entries.map(
     (item) => item.get({ plain: true }) as Record<string, unknown>,
   );
@@ -84,13 +57,13 @@ financeRouter.get("/", async (request, response) => {
     { date: string; revenue: number; orders: number; expenses: number }
   >();
   completed.forEach((item) => {
-    const date = new Date(String(item.createdAt)).toISOString().slice(0, 10);
+    const date = businessDate(new Date(String(item.createdAt)));
     const day = days.get(date) ?? { date, revenue: 0, orders: 0, expenses: 0 };
     day.revenue += number(item.total);
     day.orders += 1;
     days.set(date, day);
   });
-  manualEntries.forEach((item) => {
+  plainEntries.filter(item => item.type === "OUT" || !item.sourceId).forEach((item) => {
     const date = String(item.entryDate);
     const day = days.get(date) ?? { date, revenue: 0, orders: 0, expenses: 0 };
     if (item.type === "IN") day.revenue += number(item.amount);
@@ -106,12 +79,14 @@ financeRouter.get("/", async (request, response) => {
     );
   });
   response.json({
+    ...summary,
     period: { start, end },
     kpis: {
       revenue,
       paidOrders: completed.length,
       averageTicket: completed.length ? revenue / completed.length : 0,
-      discounts: 0,
+      discounts: summary.composition.discounts,
+      serviceFees: summary.composition.serviceFees,
       deliveryFees,
       cancellations: plainOrders.filter((item) => item.status === "CANCELED")
         .length,

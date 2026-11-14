@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { Op } from "sequelize";
 import {
   InventoryCategory,
   InventoryItem,
@@ -80,6 +81,21 @@ inventoryRouter.post("/categories", async (request, response) => {
     response.status(409).json({ message: "Essa categoria já existe." });
   }
 });
+inventoryRouter.delete("/categories/:name", async (request, response) => {
+  const name = String(request.params.name);
+  if (!name.trim() || name.length > 120) { response.status(400).json({ message: "Informe uma categoria v\u00e1lida." }); return; }
+  const removed = await sequelize.transaction(async transaction => {
+    const category = await InventoryCategory.findOne({ where: { name }, transaction, lock: transaction.LOCK.UPDATE });
+    if (category && !category.getDataValue("active")) return false;
+    await InventoryItem.findAll({ where: { category: name, removedAt: null }, order: [["id", "ASC"]], transaction, lock: transaction.LOCK.UPDATE });
+    await InventoryItem.update({ active: false, removedAt: new Date() }, { where: { category: name, removedAt: null }, transaction });
+    if (category) await category.update({ active: false }, { transaction });
+    else await InventoryCategory.create({ name, active: false }, { transaction });
+    return true;
+  });
+  if (!removed) { response.status(404).json({ message: "Categoria j\u00e1 exclu\u00edda. Atualize o estoque." }); return; }
+  response.status(204).send();
+});
 inventoryRouter.post("/items", async (request, response) => {
   const name = String(request.body.name ?? "").trim();
   const currentStock = numeric(request.body.currentStock);
@@ -153,6 +169,20 @@ inventoryRouter.patch("/items/:id", async (request, response) => {
   }
   await item.update(changes);
   response.json(item);
+});
+inventoryRouter.post("/items/bulk-delete", async (request, response) => {
+  const ids = request.body?.ids;
+  if (!Array.isArray(ids) || !ids.length || ids.length > 1000 || ids.some(id => typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) || new Set(ids).size !== ids.length) {
+    response.status(400).json({ message: "Selecione entre 1 e 1.000 itens válidos, sem repetições." }); return;
+  }
+  const removed = await sequelize.transaction(async transaction => {
+    const items = await InventoryItem.findAll({ where: { id: { [Op.in]: ids }, active: true, removedAt: null }, order: [["id", "ASC"]], transaction, lock: transaction.LOCK.UPDATE });
+    if (items.length !== ids.length) return false;
+    await InventoryItem.update({ active: false, removedAt: new Date() }, { where: { id: { [Op.in]: ids } }, transaction });
+    return true;
+  });
+  if (!removed) { response.status(409).json({ message: "A seleção mudou. Atualize o estoque e selecione os itens novamente. Nenhum item foi excluído." }); return; }
+  response.status(204).send();
 });
 inventoryRouter.delete("/items/:id", async (request, response) => {
   const removed = await sequelize.transaction(async transaction => {

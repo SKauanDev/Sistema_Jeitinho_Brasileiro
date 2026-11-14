@@ -6,7 +6,7 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently -n API,WEB -c yellow,cyan \"npm run dev -w @urfood/api\" \"npm run dev -w @urfood/web\"",
+    "dev": "concurrently -n API,WEB -c yellow,cyan \"npm run dev -w @urfood/api\" \"node scripts/wait-for-api.mjs && npm run dev -w @urfood/web\"",
     "build": "npm run build --workspaces --if-present",
     "start": "npm run start -w @urfood/api",
     "db:check": "npm run db:check -w @urfood/api"

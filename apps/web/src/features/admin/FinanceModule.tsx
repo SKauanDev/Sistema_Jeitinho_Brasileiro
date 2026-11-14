@@ -1,9 +1,12 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FinanceOperationalDetails } from "./FinanceOperationalDetails";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   ArrowDownLeft,
   ArrowUpRight,
   CalendarDays,
+  SlidersHorizontal,
+  UtensilsCrossed,
   CircleDollarSign,
   LoaderCircle,
   Plus,
@@ -36,20 +39,32 @@ export function FinanceModule() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState(false);
+  const [customRangeOpen, setCustomRangeOpen] = useState(false);
+  const requestSequence = useRef(0);
   const [saving, setSaving] = useState(false);
+  function selectMonth(value: string) {
+    if (!/^\d{4}-\d{2}$/.test(value)) return;
+    const [year, month] = value.split("-").map(Number);
+    setStartDate(`${value}-01`);
+    setEndDate(value === dateValue(new Date()).slice(0, 7) ? dateValue(new Date()) : dateValue(new Date(year, month, 0)));
+    setCustomRangeOpen(false);
+  }
   const load = async () => {
+    const sequence = ++requestSequence.current;
+    if (!startDate || !endDate || startDate > endDate) { setLoading(false); setError("Selecione um intervalo de datas v\u00e1lido."); return; }
     setLoading(true);
     setError("");
     try {
-      setData(await financeApi.getRange(startDate, endDate));
+      const result = await financeApi.getRange(startDate, endDate);
+      if (sequence === requestSequence.current) setData(result);
     } catch (reason) {
-      setError(
+      if (sequence === requestSequence.current) setError(
         reason instanceof Error
           ? reason.message
           : "Falha ao carregar financeiro.",
       );
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   };
   useEffect(() => {
@@ -82,39 +97,10 @@ export function FinanceModule() {
           <p>Vendas concluídas e fluxo de caixa real da operação.</p>
         </div>
         <div className="finance-title-actions">
-          <div className="finance-date-range">
-            <CalendarDays />
-            <label>
-              <span>De</span>
-              <input
-                type="date"
-                value={startDate}
-                max={endDate}
-                onChange={(event) => setStartDate(event.target.value)}
-              />
-            </label>
-            <i />
-            <label>
-              <span>Até</span>
-              <input
-                type="date"
-                value={endDate}
-                min={startDate}
-                max={dateValue(new Date())}
-                onChange={(event) => setEndDate(event.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              title="Voltar para o mês atual"
-              onClick={() => {
-                const range = currentMonthRange();
-                setStartDate(range.start);
-                setEndDate(range.end);
-              }}
-            >
-              Mês atual
-            </button>
+          <div className="finance-period-control">
+            <label className="finance-month-picker"><CalendarDays size={16} /><span className="sr-only">Mês do financeiro</span><input aria-label="Mês do financeiro" type="month" value={startDate.slice(0, 7)} max={dateValue(new Date()).slice(0, 7)} onChange={event => selectMonth(event.target.value)} /></label>
+            <button type="button" className="finance-range-toggle" aria-label="Personalizar período" aria-expanded={customRangeOpen} title="Personalizar período" onClick={() => setCustomRangeOpen(value => !value)}><SlidersHorizontal size={16} /></button>
+            {customRangeOpen && <div className="finance-range-popover"><label>De<input type="date" value={startDate} max={endDate} onChange={event => setStartDate(event.target.value)} /></label><label>Até<input type="date" value={endDate} min={startDate} max={dateValue(new Date())} onChange={event => setEndDate(event.target.value)} /></label><button type="button" onClick={() => selectMonth(dateValue(new Date()).slice(0, 7))}>Mês atual</button></div>}
           </div>
           <button className="primary-admin" onClick={() => setDialog(true)}>
             <Plus /> Novo lançamento
@@ -149,7 +135,7 @@ export function FinanceModule() {
         <article>
           <ReceiptText />
           <span>
-            <small>Pedidos pagos</small>
+            <small>Pedidos concluídos</small>
             <strong>{data.kpis.paidOrders}</strong>
           </span>
         </article>
@@ -172,7 +158,7 @@ export function FinanceModule() {
           <span>
             <small>Descontos</small>
             <strong>{currency(data.kpis.discounts)}</strong>
-            <em>Ainda não aplicados no checkout</em>
+
           </span>
         </article>
         <article>
@@ -182,7 +168,10 @@ export function FinanceModule() {
             <strong>{data.kpis.cancellations}</strong>
           </span>
         </article>
+        <article><UtensilsCrossed /><span><small>Serviço do garçom</small><strong>{currency(data.kpis.serviceFees ?? 0)}</strong><em>10% nos pedidos que aceitaram</em></span></article>
+        <article><ShoppingBag /><span><small>Consumo interno</small><strong>{currency(data.salesChannels?.find(channel => channel.mode === "DINE_IN")?.revenue ?? 0)}</strong><em>Pedidos das mesas</em></span></article>
       </section>
+      <FinanceOperationalDetails data={data} />
       <div className="finance-dashboard-grid">
         <article className="panel finance-chart">
           <header>

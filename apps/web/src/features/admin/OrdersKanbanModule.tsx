@@ -1,3 +1,5 @@
+import { finishedOrderLabel, orderFinishedAt, orderIsFinished } from "../../utils/order-age";
+import { OrderEditDialog } from "./OrderEditDialog";
 import { ManualOrderDialog } from "./ManualOrderDialog";
 import { getCurrentUser } from "../../services/auth";
 import { useEffect, useRef, useState } from "react";
@@ -17,9 +19,10 @@ import {
   Store,
   X,
   XCircle,
+  Trash2,
 } from "lucide-react";
 import { createAdminSocket } from "../../services/realtime";
-import { adminApi } from "../../services/admin-api";
+import { authFetch, adminApi } from "../../services/admin-api";
 import {
   ORDER_STATUS,
   ORDER_STATUS_LABEL,
@@ -48,6 +51,8 @@ const currency = (value: string | number) =>
   Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export function OrdersKanbanModule() {
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Order | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [selected, setSelected] = useState<Order | null>(null);
@@ -62,6 +67,12 @@ export function OrdersKanbanModule() {
   const edgeScrollFrame = useRef<number | null>(null);
   const edgeDirection = useRef(0);
 
+  async function removeFinalOrder(order: Order) {
+    if (!order.canDelete || !window.confirm(`Excluir definitivamente o pedido #${order.displayNumber}? Ele sair\u00e1 do hist\u00f3rico e dos relat\u00f3rios. As movimenta\u00e7\u00f5es de estoque ser\u00e3o preservadas.`)) return;
+    setRemovingId(order.id); setError("");
+    try { await authFetch(`/admin/cleanup/orders/${order.id}`, { method: "DELETE" }); setSelected(null); setEditing(null); setOrders(current => current.filter(item => item.id !== order.id)); setNotice(`Pedido #${order.displayNumber} exclu\u00eddo.`); }
+    catch (reason) { setError((reason as Error).message); } finally { setRemovingId(null); }
+  }
   function stopEdgeScroll() {
     edgeDirection.current = 0;
     if (edgeScrollFrame.current !== null)
@@ -274,6 +285,8 @@ export function OrdersKanbanModule() {
                       now={now}
                       averageMinutes={averageMinutes}
                       onOpen={() => setSelected(order)}
+                      onDelete={() => void removeFinalOrder(order)}
+                      removing={removingId === order.id}
                       onAdvance={() =>
                         nextStatus[order.status] &&
                         void changeStatus(order, order.tableNumber && order.status === "READY" ? "COMPLETED" : nextStatus[order.status]!)
@@ -292,11 +305,15 @@ export function OrdersKanbanModule() {
         <header><h2>Aguardando pagamento</h2><p>Pedidos registrados, ainda não liberados para preparo.</p></header>
         <div>{orders.filter(order => !["CANCELED", "COMPLETED"].includes(order.status) && !["APPROVED", "NOT_REQUIRED"].includes(order.paymentStatus ?? "NOT_REQUIRED")).map(order => <article key={order.id}><button onClick={() => setSelected(order)}><strong>#{order.displayNumber} · {order.customerName}</strong><span>{order.items?.map(item => `${item.quantity}× ${item.productName}`).join(" · ")}</span><small>{order.paymentStatus === "REJECTED" ? "Pagamento recusado" : order.paymentStatus === "EXPIRED" ? "Pagamento expirado" : "Pagamento pendente"} · {currency(order.total)}</small></button><button onClick={() => void changeStatus(order, "CANCELED")} aria-label={`Cancelar pedido ${order.displayNumber}`}><XCircle /> Cancelar</button></article>)}</div>
       </section>}
+      {editing && <OrderEditDialog order={editing} onClose={() => setEditing(null)} onSaved={updated => { setOrders(current => current.map(order => order.id === updated.id ? updated : order)); setSelected(updated); setEditing(null); }} />}
       {selected && (
         <OrderDetails
           order={selected}
           onClose={() => setSelected(null)}
           onChangeStatus={(status) => void changeStatus(selected, status)}
+          onEdit={() => setEditing(selected)}
+          onDelete={() => void removeFinalOrder(selected)}
+          removing={removingId === selected.id}
         />
       )}
     </div>
@@ -309,26 +326,31 @@ function OrderCard({
   averageMinutes,
   onOpen,
   onAdvance,
+  onDelete,
+  removing,
 }: {
   order: Order;
   now: number;
   averageMinutes: number;
   onOpen: () => void;
   onAdvance: () => void;
+  onDelete: () => void;
+  removing: boolean;
 }) {
   const minutes = Math.max(
     0,
     Math.floor((now - new Date(order.createdAt).getTime()) / 60_000),
   );
+  const finished = orderIsFinished(order);
   const severity =
-    minutes > averageMinutes
+    finished ? "normal" : minutes > averageMinutes
       ? "late"
       : minutes > averageMinutes / 2
         ? "warning"
         : "normal";
   return (
     <article
-      draggable
+      draggable={!finished}
       onDragStart={(event) => event.dataTransfer.setData("order-id", order.id)}
       className={`order-card ${severity}`}
     >
@@ -336,11 +358,12 @@ function OrderCard({
         <strong>#{order.displayNumber}</strong>
         <span>
           <Clock3 />{" "}
-          {new Date(order.createdAt).toLocaleTimeString("pt-BR", {
+          {finished ? orderFinishedAt(order).toLocaleDateString("pt-BR") : new Date(order.createdAt).toLocaleTimeString("pt-BR", {
             hour: "2-digit",
             minute: "2-digit",
           })}
         </span>
+        {order.canDelete && <button type="button" className="finalized-trash" disabled={removing} aria-label={`Excluir pedido ${order.displayNumber}`} title="Excluir pedido finalizado" onClick={onDelete}><Trash2 size={17} /></button>}
         <button onClick={onOpen}>
           <MoreHorizontal />
         </button>
@@ -370,7 +393,7 @@ function OrderCard({
       </button>
       <footer>
         <span>
-          <Clock3 /> há {minutes} min
+          <Clock3 /> {finished ? finishedOrderLabel(order, now) : `há ${minutes} min`}
         </span>
         {nextStatus[order.status] && (
           <button onClick={onAdvance}>
@@ -386,10 +409,16 @@ function OrderDetails({
   order,
   onClose,
   onChangeStatus,
+  onEdit,
+  onDelete,
+  removing,
 }: {
   order: Order;
   onClose: () => void;
   onChangeStatus: (status: OrderStatus) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  removing: boolean;
 }) {
   return (
     <div
@@ -407,6 +436,7 @@ function OrderDetails({
           </button>
         </header>
         <div className="order-detail-scroll">
+          {Number(order.serviceFee) > 0 && <p>Serviço do garçom (10%): <b>{currency(order.serviceFee!)}</b></p>}
           <section>
             <h3>Cliente</h3>
             <p>
@@ -460,7 +490,7 @@ function OrderDetails({
             {Number(order.digitalSecurityFee) > 0 && <div><span>Taxa LGPD</span><b>{currency(order.digitalSecurityFee ?? 0)}</b></div>}
             <div>
               <span>Taxa de entrega</span>
-              <b>{currency(order.deliveryFee)}</b>
+              <b>{currency(order.deliveryFee)}</b>{order.courierName && <span>Motoboy: {order.courierName}</span>}
             </div>
             <div>
               <span>Forma de pagamento</span>
@@ -474,6 +504,8 @@ function OrderDetails({
           </section>
         </div>
         <footer>
+          {order.canDelete && <button className="finalized-trash" disabled={removing} onClick={onDelete}><Trash2 />{removing ? "Excluindo..." : "Excluir definitivamente"}</button>}
+          {getCurrentUser()?.role !== "KITCHEN" && <button onClick={onEdit}>Editar pedido / recebimento</button>}
           <button onClick={() => void printProfessionalThermalReceipt(order)}>
             <Printer /> Imprimir cupom
           </button>
@@ -504,7 +536,7 @@ const paymentLabels: Record<string, string> = {
   CASH: "Dinheiro",
   CREDIT_CARD: "Cartão de crédito",
   DEBIT_CARD: "Cartão de débito",
-  ONLINE: "Cartão na entrega",
+  ONLINE: "Online",
   RECEIVED_ONLINE: "Pagamento online recebido",
 };
 const paymentLabel = (method?: Order["paymentMethod"]) =>
@@ -548,6 +580,6 @@ function printThermalReceipt(order: Order) {
   printWindow.document
     .write(`<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Pedido #${escapeReceipt(order.displayNumber)}</title><style>
     @page{size:80mm auto;margin:3mm}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#000;font-family:"Courier New",monospace}body{width:74mm;margin:0 auto;font-size:10px;line-height:1.25}.center{text-align:center}.logo{max-width:48mm;max-height:18mm;object-fit:contain;filter:grayscale(1) contrast(1.4)}h1{margin:2px 0;font-size:15px;line-height:1.05}p{margin:2px 0}.dash{margin:7px 0;border-top:1px dashed #000}.double{margin:7px 0;border-top:3px double #000}.order-number{font-size:20px;font-weight:900}.row{display:flex;justify-content:space-between;gap:8px}.row b:last-child,.row strong:last-child{text-align:right}.section-title{margin-bottom:4px;font-weight:900;text-transform:uppercase}.item{padding:4px 0;border-bottom:1px dotted #777}.item-main{display:grid;grid-template-columns:18px 1fr 48px 52px;gap:3px;align-items:start}.item-main span:nth-child(3),.item-main strong{text-align:right}.item small,.item em{display:block;margin:2px 0 0 21px;font-size:9px}.item em{font-weight:700;font-style:normal}.total{font-size:15px;font-weight:900}.footer{margin-top:9px;text-align:center;font-size:9px}.cut{margin-top:14px;text-align:center;letter-spacing:2px}@media print{body{width:100%}.no-print{display:none}}
-  </style></head><body><header class="center"><img class="logo" src="${window.location.origin}/images/logo.png" alt="Jeitinho Brasileiro"><h1>PIZZARIA JEITINHO BRASILEIRO</h1><p>PEDIDO INTERNO · NÃO É DOCUMENTO FISCAL</p></header><div class="dash"></div><section class="center"><div>PEDIDO</div><div class="order-number">#${escapeReceipt(order.displayNumber)}</div><b>${escapeReceipt(date)}</b><p>${order.fulfillmentType === "DELIVERY" ? "DELIVERY" : "RETIRADA"} · ${escapeReceipt(ORDER_STATUS_LABEL[order.status])}</p></section><div class="double"></div><section><div class="section-title">CLIENTE</div><b>${escapeReceipt(order.customerName)}</b><p>${escapeReceipt(order.customerPhone)}</p><p>${address}</p></section><div class="dash"></div><section><div class="item-main section-title"><span>ITEM</span><span>DESCRIÇÃO</span><span>UNIT.</span><span>TOTAL</span></div>${rows}</section>${order.notes ? `<div class="dash"></div><section><b>OBSERVAÇÃO DO PEDIDO</b><p>${escapeReceipt(order.notes)}</p></section>` : ""}<div class="double"></div><section><div class="row"><span>SUBTOTAL</span><b>R$ ${receiptMoney(order.subtotal)}</b></div>${discount ? `<div class="row"><span>DESCONTO ${order.couponCode ? `(${escapeReceipt(order.couponCode)})` : ""}</span><b>- R$ ${receiptMoney(discount)}</b></div>` : ""}<div class="row"><span>TAXA DE ENTREGA</span><b>R$ ${receiptMoney(order.deliveryFee)}</b></div><div class="row total"><span>TOTAL</span><strong>R$ ${receiptMoney(order.total)}</strong></div></section><div class="dash"></div><section><div class="row"><span>FORMA DE PAGAMENTO</span><b>${escapeReceipt(paymentLabel(order.paymentMethod))}</b></div>${Number(order.changeFor) ? `<div class="row"><span>TROCO PARA</span><b>R$ ${receiptMoney(order.changeFor)}</b></div><div class="row"><span>TROCO</span><b>R$ ${receiptMoney(Number(order.changeFor) - Number(order.total))}</b></div>` : ""}</section><footer class="footer"><div class="dash"></div><b>Obrigado pela preferência!</b><p>Confira os itens antes de liberar o pedido.</p><div class="cut">- - - - - CORTE AQUI - - - - -</div></footer><script>window.addEventListener('load',()=>setTimeout(()=>{window.print();window.close()},250));<\/script></body></html>`);
+  </style></head><body><header class="center"><img class="logo" src="${window.location.origin}/images/logo.png" alt="Jeitinho Brasileiro"><h1>PIZZARIA JEITINHO BRASILEIRO</h1><p>PEDIDO INTERNO · NÃO É DOCUMENTO FISCAL</p></header><div class="dash"></div><section class="center"><div>PEDIDO</div><div class="order-number">#${escapeReceipt(order.displayNumber)}</div><b>${escapeReceipt(date)}</b><p>${order.fulfillmentType === "DELIVERY" ? "DELIVERY" : "RETIRADA"} · ${escapeReceipt(ORDER_STATUS_LABEL[order.status])}</p></section><div class="double"></div><section><div class="section-title">CLIENTE</div><b>${escapeReceipt(order.customerName)}</b><p>${escapeReceipt(order.customerPhone)}</p><p>${address}</p></section><div class="dash"></div><section><div class="item-main section-title"><span>ITEM</span><span>DESCRIÇÃO</span><span>UNIT.</span><span>TOTAL</span></div>${rows}</section>${order.notes ? `<div class="dash"></div><section><b>OBSERVAÇÃO DO PEDIDO</b><p>${escapeReceipt(order.notes)}</p></section>` : ""}<div class="double"></div><section><div class="row"><span>SUBTOTAL</span><b>R$ ${receiptMoney(order.subtotal)}</b></div>${discount ? `<div class="row"><span>DESCONTO ${order.couponCode ? `(${escapeReceipt(order.couponCode)})` : ""}</span><b>- R$ ${receiptMoney(discount)}</b></div>` : ""}${Number(order.serviceFee) ? `<div class="row"><span>SERVIÇO (10%)</span><b>R$ ${receiptMoney(order.serviceFee)}</b></div>` : ""}${order.courierName ? `<div class="row"><span>MOTOBOY</span><b>${escapeReceipt(order.courierName)}</b></div>` : ""}<div class="row"><span>TAXA DE ENTREGA</span><b>R$ ${receiptMoney(order.deliveryFee)}</b></div><div class="row total"><span>TOTAL</span><strong>R$ ${receiptMoney(order.total)}</strong></div></section><div class="dash"></div><section><div class="row"><span>FORMA DE PAGAMENTO</span><b>${escapeReceipt(paymentLabel(order.paymentMethod))}</b></div>${Number(order.changeFor) ? `<div class="row"><span>TROCO PARA</span><b>R$ ${receiptMoney(order.changeFor)}</b></div><div class="row"><span>TROCO</span><b>R$ ${receiptMoney(Number(order.changeFor) - Number(order.total))}</b></div>` : ""}</section><footer class="footer"><div class="dash"></div><b>Obrigado pela preferência!</b><p>Confira os itens antes de liberar o pedido.</p><div class="cut">- - - - - CORTE AQUI - - - - -</div></footer><script>window.addEventListener('load',()=>setTimeout(()=>{window.print();window.close()},250));<\/script></body></html>`);
   printWindow.document.close();
 }

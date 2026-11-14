@@ -23,9 +23,9 @@ export function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
 async function performAuthFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = localStorage.getItem("urfood_token");
   const response = await fetch(`${API_URL}${path}`, { ...init, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...init?.headers } });
-  const data = await response.json() as T & { message?: string };
+  const data = (response.status === 204 ? undefined : await response.json()) as T & { message?: string };
   if (response.status === 401) { localStorage.removeItem("urfood_token"); localStorage.removeItem("urfood_user"); window.location.href = "/"; }
-  if (!response.ok) throw new Error(data.message ?? "Falha ao consultar a API.");
+  if (!response.ok) throw new Error(data?.message ?? "Falha ao consultar a API.");
   return data;
 }
 

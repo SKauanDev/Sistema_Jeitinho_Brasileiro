@@ -6,6 +6,7 @@ export type Extra = {
 };
 
 export type Product = {
+  ingredients?: string[];
   id: string;
   category: string;
   name: string;

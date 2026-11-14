@@ -77,6 +77,13 @@ button:focus-visible, a:focus-visible {
   --field-ring: #6F080114;
 }
 input, textarea { cursor: text; }
+/* Keep native autofill from painting a strip inside controls with icons. */
+input:is(:autofill, :-webkit-autofill) {
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: currentColor;
+  caret-color: currentColor;
+}
 select { font-family: inherit; }
 :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), select, textarea) {
   transition: border-color .16s ease, box-shadow .16s ease;
@@ -127,6 +134,10 @@ body :is(input, select, textarea):disabled {
 .admin-sidebar nav a { min-height: 40px; }
 .login-panel input, .customer-login-card input { font-size: 16px; }
 .login-heading p { color: #665f58; line-height: 1.6; }
+.catalog-credit { padding: 24px 80px 32px; text-align: center; color: #81776b; font-size: 12px; line-height: 1.6; }
+.catalog-credit a { color: inherit; text-decoration: none; }
+.catalog-credit strong { font-weight: 700; }
+.catalog-credit a:hover { color: var(--brand-red); text-decoration: underline; text-underline-offset: 3px; }
 .notification-sound { display: inline-flex; align-items: center; gap: 7px; }
 .notification-sound > span { font-size: 13px; white-space: nowrap; }
 .order-sound-banner { display: flex; align-items: center; gap: 12px; margin: 18px 30px 0; padding: 14px 16px; border: 1px solid #CA923970; border-radius: 10px; background: #fff8e9; color: #51402a; font-size: 14px; }

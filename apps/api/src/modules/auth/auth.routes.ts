@@ -34,6 +34,7 @@ authRouter.post("/login", async (request, response) => {
       name: String(user.getDataValue("name")),
       username: payload.username,
       role: payload.role,
+      isDeveloper: Boolean(user.getDataValue("isDeveloper")),
     },
   });
 });

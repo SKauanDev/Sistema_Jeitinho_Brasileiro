@@ -1,3 +1,4 @@
+import { isDeveloper } from "../../shared/developer.middleware.js";
 import { randomBytes } from "node:crypto";
 import { Router } from "express";
 import { Op, type Model, type Transaction } from "sequelize";
@@ -34,7 +35,7 @@ async function summary(table: Model, existingOrders?: Model[]) {
 export function createDiningRouter(isOpen = effectiveStoreStatus, tableCount?: number) {
 const diningRouter = Router();
 diningRouter.use((_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
-diningRouter.post("/scan", createRateLimit(300, 10 * 60_000), async (req, res) => {
+diningRouter.post("/scan", requireAuth, requireAdmin, createRateLimit(300, 10 * 60_000), async (req, res) => {
   if (!scannerOriginAllowed(req)) { res.status(403).json({ message: DINING_DENIED }); return; }
   const table = typeof req.body?.key === "string" ? await publicTable(req.body.key, tableCount) : null;
   if (!table) { res.status(404).json({ message: "Mesa indisponível. Consulte a equipe." }); return; }
@@ -92,7 +93,7 @@ adminDiningRouter.get("/", async (_req, res) => {
     const id = String(order.getDataValue("diningSessionId"));
     bySession.set(id, [...(bySession.get(id) ?? []), order]);
   }
-  res.json({ count, tables: await Promise.all(tables.map(async table => ({ id: table.getDataValue("id"), key: table.getDataValue("accessKey"), ...await summary(table, bySession.get(String(table.getDataValue("sessionId"))) ?? []) }))) });
+  res.json({ canDeleteClosedSessions: isDeveloper(res.locals.user), count, tables: await Promise.all(tables.map(async table => ({ id: table.getDataValue("id"), key: table.getDataValue("accessKey"), ...await summary(table, bySession.get(String(table.getDataValue("sessionId"))) ?? []) }))) });
 });
 adminDiningRouter.put("/count", async (req, res) => {
   const count = req.body.count;

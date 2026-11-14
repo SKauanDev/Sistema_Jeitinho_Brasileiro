@@ -16,13 +16,14 @@ import {
 import { sequelize } from "../../database/sequelize.js";
 import type { Server } from "socket.io";
 import { calculateCoupon } from "../promotions/coupon.service.js";
-import { createPixPayment } from "../payments/mercado-pago.service.js";
+import { serviceFee } from "./service-fee.js";
+import { parseIngredients } from "../catalog/ingredients.js";
 import { applyOrderInventory, validateOrderInventory } from "../inventory/catalog-inventory.service.js";
 import { Op, Transaction } from "sequelize";
 import { orderQuantity } from "../inventory/stock-validation.js";
 import { DIGITAL_SECURITY_FEE, orderTotal } from "./order-fees.js";
 import { hasFixedDeliveryFee, resolveDeliveryFee } from "../delivery/delivery-fee.js";
-import { expireUnpaidOrder, PAYMENT_TIMEOUT_MS } from "../payments/payment-timeout.service.js";
+
 import { ADMIN_ROOM, orderTrackingToken } from "../../realtime/socket-security.js";
 import { assertDeliveryLocality } from "../settings/delivery-locality.js";
 import { requireOrderAccess } from "../../shared/order-access.middleware.js";
@@ -37,6 +38,7 @@ import {
 } from "../settings/store-operation.service.js";
 
 type OrderPayload = {
+  serviceFeeAccepted?: boolean;
   manual?: boolean;
   table?: { key: string; sessionId: string };
   customerName?: string;
@@ -59,6 +61,7 @@ type OrderPayload = {
   couponCode?: string;
   notes?: string;
   items?: Array<{
+    ingredients?: string[];
     style?: string;
     size?: string;
     pizzaSelections?: PizzaSelection[];
@@ -113,9 +116,7 @@ orderRouter.post("/", async (request, response) => {
     !payload.customerPhone ||
     !payload.fulfillmentType ||
     !payload.paymentMethod ||
-    !payload.items?.length ||
-    (["PIX", "CREDIT_CARD", "DEBIT_CARD"].includes(payload.paymentMethod) && !payload.customerEmail) ||
-    (["CREDIT_CARD", "DEBIT_CARD"].includes(payload.paymentMethod) && ![11, 14].includes(String(payload.customerDocument ?? "").replace(/\D/g, "").length))
+    !payload.items?.length
   ) {
     response.status(400).json({ message: "Dados do pedido incompletos." });
     return;
@@ -166,9 +167,9 @@ orderRouter.post("/", async (request, response) => {
         : payload.paymentMethod === "CASH"
           ? enabledPayments.cash
           : payload.paymentMethod === "ONLINE"
-            ? enabledPayments.cardOnDelivery
+            ? enabledPayments.onlineCard
             : ["CREDIT_CARD", "DEBIT_CARD"].includes(payload.paymentMethod)
-              ? enabledPayments.onlineCard
+              ? enabledPayments.cardOnDelivery
               : false;
     if (!paymentAllowed && !payload.table && !(manual && payload.paymentMethod === "RECEIVED_ONLINE"))
       throw new Error("A forma de pagamento selecionada está indisponível.");
@@ -194,7 +195,7 @@ orderRouter.post("/", async (request, response) => {
           const configuration = resolvePizzaConfiguration(pizzaProducts.get(item.productId)!, item.size, item.pizzaSelections, pizzaProducts, readPizzaRules(settings.getDataValue("pizzaRules")), item.style);
           const unitPrice = configuration.unitPrice;
           const normalizedOptions = await Promise.all(
-            (item.options ?? []).filter(selected => !["Tamanho", "Estilo da massa"].includes(selected.group ?? "") && !/^Borda · Pizza/.test(selected.group ?? "") && (item.pizzaSelections === undefined || !/^Pizza \d+/.test(selected.group ?? ""))).map(async (selected) => {
+            (item.options ?? []).filter(selected => !["Ingredientes", "Tamanho", "Estilo da massa"].includes(selected.group ?? "") && !/^Borda · Pizza/.test(selected.group ?? "") && (item.pizzaSelections === undefined || !/^Pizza \d+/.test(selected.group ?? ""))).map(async (selected) => {
               if (!selected.optionId) return { ...selected, price: 0 };
               const option = optionsById.get(selected.optionId);
               if (!option)
@@ -209,6 +210,13 @@ orderRouter.post("/", async (request, response) => {
             }),
           );
           normalizedOptions.push(...configuration.options);
+          const ingredients = parseIngredients(product.getDataValue("ingredients"));
+          if (ingredients.length) {
+            const chosen = item.ingredients === undefined ? ingredients : item.ingredients;
+            if (!Array.isArray(chosen) || chosen.some(name => !ingredients.includes(name)) || new Set(chosen).size !== chosen.length) throw new PizzaValidationError("Ingredientes selecionados inválidos.");
+            for (const name of chosen.length ? chosen : ["Sem ingredientes opcionais"]) normalizedOptions.push({ name, group: "Ingredientes", price: 0 });
+          }
+
           const optionsTotal = normalizedOptions.reduce(
             (sum, option) => sum + Math.max(0, Number(option.price ?? 0)),
             0,
@@ -263,7 +271,8 @@ orderRouter.post("/", async (request, response) => {
           )
         : null;
       const discountAmount = couponResult?.discount ?? 0;
-      const total = payload.table ? subtotal : orderTotal(subtotal, deliveryFee, discountAmount);
+      const waiterFee = serviceFee(Math.max(0, subtotal - discountAmount), payload.serviceFeeAccepted, !!payload.table);
+      const total = payload.table ? Number((subtotal - discountAmount + waiterFee).toFixed(2)) : orderTotal(subtotal, deliveryFee, discountAmount);
       const order = await Order.create(
         {
           customerAccountId,
@@ -286,17 +295,14 @@ orderRouter.post("/", async (request, response) => {
           complement: payload.address?.complement,
           postalCode: payload.address?.postalCode,
           subtotal,
+          serviceFee: waiterFee, serviceFeeAccepted: payload.serviceFeeAccepted === true,
           deliveryFee,
           digitalSecurityFee: payload.table ? 0 : DIGITAL_SECURITY_FEE,
           total,
           paymentMethod: payload.paymentMethod,
-          paymentExpiresAt: ["PIX", "CREDIT_CARD", "DEBIT_CARD"].includes(String(payload.paymentMethod)) ? new Date(Date.now() + PAYMENT_TIMEOUT_MS) : null,
+          paymentProvider: "MANUAL", paymentExpiresAt: null,
           paidAt: payload.paymentMethod === "RECEIVED_ONLINE" ? new Date() : null,
-          paymentStatus: payload.paymentMethod === "RECEIVED_ONLINE" ? "APPROVED" : ["PIX", "CREDIT_CARD", "DEBIT_CARD"].includes(
-            String(payload.paymentMethod),
-          )
-            ? "PENDING"
-            : "NOT_REQUIRED",
+          paymentStatus: payload.paymentMethod === "RECEIVED_ONLINE" ? "APPROVED" : payload.table || ["CASH", "CREDIT_CARD", "DEBIT_CARD"].includes(payload.paymentMethod!) ? "NOT_REQUIRED" : "PENDING",
           couponCode: couponResult?.code ?? null,
           discountAmount,
           changeFor:
@@ -348,34 +354,10 @@ orderRouter.post("/", async (request, response) => {
         },
         { transaction },
       );
-      if (
-        !["PIX", "CREDIT_CARD", "DEBIT_CARD"].includes(
-          String(payload.paymentMethod),
-        )
-      )
-        await applyOrderInventory(
-          String(order.getDataValue("id")),
-          transaction,
-        );
+      if (["APPROVED", "NOT_REQUIRED"].includes(String(order.getDataValue("paymentStatus")))) await applyOrderInventory(String(order.getDataValue("id")), transaction);
       return order;
     });
-    if (payload.paymentMethod === "PIX")
-      try {
-        await createPixPayment(result, String(payload.customerEmail));
-      } catch (error) {
-        await result.update({
-          status: "CANCELED",
-          paymentStatus: "REJECTED",
-          cancellationReason: "Não foi possível gerar a cobrança PIX.",
-        });
-        throw error;
-      }
-    const paymentPath =
-      payload.paymentMethod === "PIX"
-        ? "pix"
-        : ["CREDIT_CARD", "DEBIT_CARD"].includes(payload.paymentMethod)
-          ? "cartao"
-          : null;
+    const paymentPath = null;
     const event = {
       id: result.getDataValue("id"),
       displayNumber: result.getDataValue("displayNumber"),
@@ -385,9 +367,7 @@ orderRouter.post("/", async (request, response) => {
       paymentPath,
     };
     response.status(201).json({ ...event, trackingToken: orderTrackingToken(String(result.getDataValue("id"))) });
-    if (!paymentPath)
-      (request.app.get("io") as Server | undefined)?.to(ADMIN_ROOM).emit("order:new", event);
-    else (request.app.get("io") as Server | undefined)?.to(ADMIN_ROOM).emit("order:updated", event);
+    (request.app.get("io") as Server | undefined)?.to(ADMIN_ROOM).emit("order:new", event);
   } catch (error) {
     console.error("Falha ao criar pedido:", error);
     const detail = error instanceof Error ? error.message : "";
@@ -424,8 +404,6 @@ orderRouter.post("/", async (request, response) => {
 });
 
 orderRouter.get("/:id", requireOrderAccess, async (request, response) => {
-  const current = await Order.findByPk(String(request.params.id));
-  if (current) await expireUnpaidOrder(current, request.app.get("io") as Server | undefined);
   const order = await Order.findByPk(String(request.params.id), {
     include: [{ model: OrderStatusHistory, as: "statusHistory" }, { model: OrderItem, as: "items", include: [{ model: OrderItemOption, as: "selectedOptions" }] }],
   });

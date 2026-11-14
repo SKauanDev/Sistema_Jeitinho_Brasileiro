@@ -12,11 +12,15 @@ export async function syncCatalogInventory(transaction?: Transaction) {
   const products = await Product.findAll({ where: { active: true, trashedAt: null }, include: [{ model: Category, as: "category", required: true }], transaction });
   const eligible = products.filter(product => !excludedCategory((product.get("category") as any)?.name));
   const existing = await InventoryItem.findAll({ transaction });
+  const stockCategories = await InventoryCategory.findAll({ transaction });
+  const retired = new Set(stockCategories.filter(category => !category.getDataValue("active")).map(category => String(category.getDataValue("name"))));
   const used = new Set(existing.filter(item => item.getDataValue("productId")).map(item => String(item.getDataValue("id"))));
   for (const product of eligible) {
     const productId = String(product.getDataValue("id"));
-    const categoryName = String((product.get("category") as any)?.name ?? "Cardápio");
     const linked = existing.find(item => String(item.getDataValue("productId") ?? "") === productId);
+    const originalCategory = String((product.get("category") as any)?.name ?? "Cardápio");
+    if (retired.has(originalCategory)) continue;
+    const categoryName = originalCategory;
     if (linked) {
       if (linked.getDataValue("removedAt")) continue;
       if (linked.getDataValue("name") !== product.getDataValue("name") || linked.getDataValue("category") !== categoryName || !linked.getDataValue("active")) {
@@ -55,6 +59,8 @@ export async function applyOrderInventory(orderId: string, outerTransaction?: Tr
   const execute = async (transaction: Transaction) => {
     const order = await Order.findByPk(orderId, { transaction, lock: transaction.LOCK.UPDATE });
     if (!order || order.getDataValue("inventoryProcessedAt") || order.getDataValue("status") === "CANCELED") return false;
+    const revision = Number(order.getDataValue("inventoryRevision") ?? 0);
+    const movementKey = `ORDER:${orderId}${revision ? `:R${revision}` : ""}`;
     const items = await OrderItem.findAll({ where: { orderId }, transaction });
     for (const [productId, requested] of groupedQuantities(items.map(item => ({ productId: item.getDataValue("productId"), quantity: item.getDataValue("quantity") })))) {
       const inventory = await InventoryItem.findOne({ where: { productId, active: true, removedAt: null }, transaction, lock: transaction.LOCK.UPDATE }); if (!inventory) continue;
@@ -63,7 +69,7 @@ export async function applyOrderInventory(orderId: string, outerTransaction?: Tr
       const deducted = requested;
       const resulting = previous - deducted;
       await inventory.update({ currentStock: resulting }, { transaction });
-      if (deducted > 0) await InventoryMovement.findOrCreate({ where: { sourceId: `ORDER:${orderId}:${inventory.getDataValue("id")}` }, defaults: { inventoryItemId: inventory.getDataValue("id"), orderId, sourceId: `ORDER:${orderId}:${inventory.getDataValue("id")}`, type: "OUT", quantity: deducted, previousStock: previous, resultingStock: resulting, reason: `Venda no pedido #${order.getDataValue("displayNumber")}`, notes: "Baixa automática pelo cardápio", createdBy: "Sistema" }, transaction });
+      if (deducted > 0) await InventoryMovement.findOrCreate({ where: { sourceId: `${movementKey}:${inventory.getDataValue("id")}` }, defaults: { inventoryItemId: inventory.getDataValue("id"), orderId, sourceId: `${movementKey}:${inventory.getDataValue("id")}`, type: "OUT", quantity: deducted, previousStock: previous, resultingStock: resulting, reason: `Venda no pedido #${order.getDataValue("displayNumber")}`, notes: "Baixa automática pelo cardápio", createdBy: "Sistema" }, transaction });
     }
     await order.update({ inventoryProcessedAt: new Date() }, { transaction });
     return true;
@@ -75,12 +81,20 @@ export async function revertOrderInventory(orderId: string, outerTransaction?: T
   const execute = async (transaction: Transaction) => {
     const order = await Order.findByPk(orderId, { transaction, lock: transaction.LOCK.UPDATE });
     if (!order?.getDataValue("inventoryProcessedAt") || order.getDataValue("inventoryRevertedAt")) return false;
-    const movements = await InventoryMovement.findAll({ where: { orderId, type: "OUT" }, transaction });
+    const movements = await InventoryMovement.findAll({ where: { orderId }, transaction });
+    const balances = new Map<string, number>();
     for (const movement of movements) {
-      const inventory = await InventoryItem.findByPk(movement.getDataValue("inventoryItemId"), { transaction, lock: transaction.LOCK.UPDATE }); if (!inventory) continue;
-      const previous = number(inventory.getDataValue("currentStock")); const returned = number(movement.getDataValue("quantity")); const resulting = previous + returned;
+      const id = String(movement.getDataValue("inventoryItemId"));
+      balances.set(id, (balances.get(id) ?? 0) + number(movement.getDataValue("quantity")) * (movement.getDataValue("type") === "OUT" ? 1 : -1));
+    }
+    const revision = Number(order.getDataValue("inventoryRevision") ?? 0);
+    const movementKey = `CANCEL:${orderId}${revision ? `:R${revision}` : ""}`;
+    for (const [inventoryId, returned] of [...balances].sort(([a], [b]) => a.localeCompare(b))) {
+      if (returned <= 0) continue;
+      const inventory = await InventoryItem.findByPk(inventoryId, { transaction, lock: transaction.LOCK.UPDATE }); if (!inventory) continue;
+      const previous = number(inventory.getDataValue("currentStock")); const resulting = previous + returned;
       await inventory.update({ currentStock: resulting }, { transaction });
-      await InventoryMovement.findOrCreate({ where: { sourceId: `CANCEL:${orderId}:${inventory.getDataValue("id")}` }, defaults: { inventoryItemId: inventory.getDataValue("id"), orderId, sourceId: `CANCEL:${orderId}:${inventory.getDataValue("id")}`, type: "IN", quantity: returned, previousStock: previous, resultingStock: resulting, reason: `Estorno do pedido #${order.getDataValue("displayNumber")}`, notes: "Entrada automática por cancelamento", createdBy: "Sistema" }, transaction });
+      await InventoryMovement.findOrCreate({ where: { sourceId: `${movementKey}:${inventory.getDataValue("id")}` }, defaults: { inventoryItemId: inventory.getDataValue("id"), orderId, sourceId: `${movementKey}:${inventory.getDataValue("id")}`, type: "IN", quantity: returned, previousStock: previous, resultingStock: resulting, reason: `Estorno do pedido #${order.getDataValue("displayNumber")}`, notes: "Entrada automática por cancelamento", createdBy: "Sistema" }, transaction });
     }
     await order.update({ inventoryRevertedAt: new Date() }, { transaction }); return true;
   };

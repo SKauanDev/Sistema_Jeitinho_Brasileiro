@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
-import { X, Printer, RefreshCw } from "lucide-react";
+import { X, Printer, RefreshCw, Trash2 } from "lucide-react";
 import { authFetch } from "../../services/admin-api";
 import { ScanTableButton } from "../../components/TableScanner";
 type Table = { id: string; key: string; number: number; sessionId: string | null; total: number; orders: Array<{ id: string; displayNumber: string; status: string; total: string; notes?: string; items: Array<{ id: string; productName: string; quantity: number; selectedOptions: Array<{ optionName: string; optionGroupName: string }> }> }> };
+type ClosedSession = { id: string; tableNumber: number; closedAt: string; total: string; ordersCount: number; canDelete: boolean };
 const money = (value: number | string) => Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 function TableIcon() {
   return <svg className="table-symbol" viewBox="0 0 128 96" fill="currentColor" aria-hidden="true" focusable="false">
@@ -16,8 +17,10 @@ function TableIcon() {
   </svg>;
 }
 export function TablesModule() {
-  const [tables, setTables] = useState<Table[]>([]), [count, setCount] = useState(40), [error, setError] = useState(""), [selected, setSelected] = useState<Table | null>(null), [busy, setBusy] = useState(false);
-  async function load() { const data = await authFetch<{ count: number; tables: Table[] }>("/admin/tables"); setTables(data.tables); setCount(data.count); setSelected(current => { if (!current) return null; const updated = data.tables.find(table => table.id === current.id); return updated?.sessionId === current.sessionId ? updated : null; }); }
+  const countDirty = useRef(false);
+  const [closedSessions, setClosedSessions] = useState<ClosedSession[]>([]), [developer, setDeveloper] = useState(false), [deleting, setDeleting] = useState<string | null>(null);
+  const [tables, setTables] = useState<Table[]>([]), [count, setCount] = useState("40"), [error, setError] = useState(""), [selected, setSelected] = useState<Table | null>(null), [busy, setBusy] = useState(false);
+  async function load() { const data = await authFetch<{ count: number; tables: Table[]; canDeleteClosedSessions?: boolean }>("/admin/tables"); setTables(data.tables); if (!countDirty.current) setCount(String(data.count)); setDeveloper(data.canDeleteClosedSessions === true); if (data.canDeleteClosedSessions) setClosedSessions(await authFetch<ClosedSession[]>("/admin/cleanup/sessions")); else setClosedSessions([]); setSelected(current => { if (!current) return null; const updated = data.tables.find(table => table.id === current.id); return updated?.sessionId === current.sessionId ? updated : null; }); }
   useEffect(() => { void load().catch(reason => setError(reason.message)); const timer = window.setInterval(() => { if (document.visibilityState === "visible") void load().catch(() => undefined); }, 15000); return () => window.clearInterval(timer); }, []);
   async function printQrs() {
     const popup = window.open("", "qrs-mesas", "width=1000,height=800");
@@ -29,9 +32,13 @@ export function TablesModule() {
     } catch { popup.close(); setError("Não foi possível preparar os QR codes."); }
   }
   return <div className="admin-module"><div className="module-title"><div><span>ATENDIMENTO NO SALÃO</span><h1>Mesas e comandas</h1><p>Consumo por mesa, fechamento e QR codes.</p></div><div className="table-title-actions"><ScanTableButton /><button onClick={() => void printQrs()}><Printer size={18} /> Imprimir QR codes</button></div></div>{error && <p role="alert" className="admin-inline-error">{error}</p>}
-    <form className="table-count-form panel" onSubmit={async event => { event.preventDefault(); setBusy(true); setError(""); try { await authFetch("/admin/tables/count", { method: "PUT", body: JSON.stringify({ count }) }); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Falha ao salvar."); } finally { setBusy(false); } }}><label>Quantidade de mesas<input type="number" required min={1} max={300} value={count} onChange={event => setCount(Number(event.target.value))} /></label><button disabled={busy}>Salvar quantidade</button><button type="button" aria-label="Atualizar mesas" onClick={() => void load().catch(reason => setError(reason.message))}><RefreshCw size={18} /></button><small>Mesas excedentes ficam ocultas. Contas abertas precisam ser fechadas antes.</small></form>
+    <form className="table-count-form panel" onSubmit={async event => { event.preventDefault(); setBusy(true); setError(""); try { await authFetch("/admin/tables/count", { method: "PUT", body: JSON.stringify({ count: Number(count) }) }); countDirty.current = false; await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Falha ao salvar."); } finally { setBusy(false); } }}><label>Quantidade de mesas<input type="number" required min={1} max={300} placeholder="Ex.: 40" value={count} onChange={event => { countDirty.current = true; setCount(event.target.value); }} /></label><button disabled={busy || !count}>Salvar quantidade</button><button type="button" aria-label="Atualizar mesas" onClick={() => void load().catch(reason => setError(reason.message))}><RefreshCw size={18} /></button><small>Mesas excedentes ficam ocultas. Contas abertas precisam ser fechadas antes.</small></form>
     <div className="table-status-legend" aria-label="Disponibilidade das mesas"><span><i /> Livre · {tables.filter(table => !table.sessionId).length}</span><span className="occupied"><i /> Em uso · {tables.filter(table => table.sessionId).length}</span></div>
     <div className="tables-grid">{tables.map(table => <button type="button" key={table.id} className={`table-card ${table.sessionId ? "occupied" : ""}`} aria-label={`Mesa ${table.number}, ${table.sessionId ? `em uso, ${money(table.total)}` : "livre"}`} onClick={() => setSelected(table)}><TableIcon /><span className="table-number-label">Mesa {table.number}</span><span className="table-status"><i />{table.sessionId ? "Em uso" : "Livre"}</span>{table.sessionId && <b className="table-amount">{money(table.total)}</b>}</button>)}</div>
+    {developer && <section className="panel closed-session-history"><header><h2>Comandas encerradas</h2><p>Exclusão disponível somente para o desenvolvedor. Os pedidos precisam estar concluídos ou cancelados.</p></header>{closedSessions.map(session => <article key={session.id}><div><strong>Mesa {session.tableNumber}</strong><span>{new Date(session.closedAt).toLocaleDateString("pt-BR")} · {session.ordersCount} pedido(s)</span></div><b>{money(session.total)}</b><button type="button" className="finalized-trash" disabled={!session.canDelete || deleting === session.id} aria-label={`Excluir comanda encerrada da mesa ${session.tableNumber}`} title={session.canDelete ? "Excluir comanda encerrada" : "Conclua ou cancele os pedidos antes de excluir"} onClick={async () => {
+      if (!window.confirm(`Excluir definitivamente esta comanda da mesa ${session.tableNumber} e seus ${session.ordersCount} pedido(s)? Os valores sair\u00e3o dos relat\u00f3rios. O estoque n\u00e3o ser\u00e1 alterado.`)) return;
+      setDeleting(session.id); setError(""); try { await authFetch(`/admin/cleanup/sessions/${session.id}`, { method: "DELETE" }); await load(); } catch (reason) { setError((reason as Error).message); } finally { setDeleting(null); }
+    }}><Trash2 size={18} /></button></article>)}{!closedSessions.length && <p>Nenhuma comanda encerrada.</p>}</section>}
     {selected && <TableDialog table={selected} onClose={() => setSelected(null)} onClosed={() => { setSelected(null); void load().catch(reason => setError(reason.message)); }} />}
   </div>;
 }

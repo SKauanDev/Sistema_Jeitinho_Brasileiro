@@ -42,9 +42,9 @@ test("MySQL/HTTP: comanda abre, acumula consumo, fecha, rejeita sessão antiga; 
     const blocked = await request(`/tables/${key}`); assert.equal(blocked.status, 403); assert.equal((await blocked.json()).message, DINING_DENIED);
     assert.equal((await request(`/tables/${key}/open`, "POST")).status, 403);
     assert.equal((await request("/orders", "POST", { table: { key, sessionId: randomUUID() }, items: [] })).status, 403);
-    assert.equal((await request("/tables/scan", "POST", { key })).status, 403);
+    assert.equal((await request("/tables/scan", "POST", { key })).status, 401);
     const scan = async () => {
-      const response = await fetch(url + "/tables/scan", { method: "POST", headers: { "Content-Type": "application/json", Origin: new URL(env.webUrl).origin }, body: JSON.stringify({ key }) });
+      const response = await fetch(url + "/tables/scan", { method: "POST", headers: { "Content-Type": "application/json", Origin: new URL(env.webUrl).origin, Authorization: `Bearer ${token}` }, body: JSON.stringify({ key }) });
       assert.equal(response.status, 200); tableAccess = (await response.json()).accessToken; assert.ok(tableAccess);
     };
     await scan();

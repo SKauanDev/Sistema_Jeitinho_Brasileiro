@@ -34,7 +34,10 @@
     "db:migrate-kitchen-role": "tsx src/database/migrate-kitchen-role.ts",
     "db:migrate-dining": "tsx src/database/migrate-dining.ts",
     "db:configure-pizza-styles": "tsx src/database/configure-pizza-styles.ts",
-    "db:migrate-inventory-removal": "tsx src/database/migrate-inventory-removal.ts"
+    "db:migrate-inventory-removal": "tsx src/database/migrate-inventory-removal.ts",
+    "db:migrate-operations": "tsx src/database/migrate-operations.ts",
+    "db:migrate-customer-management": "tsx src/database/migrate-customer-management.ts",
+    "db:set-developer": "tsx src/database/set-developer.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

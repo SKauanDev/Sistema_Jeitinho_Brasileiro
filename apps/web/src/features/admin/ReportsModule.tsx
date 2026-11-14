@@ -27,7 +27,7 @@ const payment: Record<string, string> = {
   CASH: "Dinheiro",
   CREDIT_CARD: "Crédito",
   DEBIT_CARD: "Débito",
-  ONLINE: "Cartão na entrega",
+  ONLINE: "Online",
   RECEIVED_ONLINE: "Pagamento online recebido",
 };
 const periodLabels: Record<string, string> = {

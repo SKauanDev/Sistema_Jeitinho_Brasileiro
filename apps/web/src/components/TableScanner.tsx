@@ -3,9 +3,13 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Camera, ScanLine, X, RotateCcw, LoaderCircle } from "lucide-react";
 import { tablePathFromQr } from "../utils/table-qr";
 import { authorizeTableScan } from "../services/table-access";
+import { getCurrentUser } from "../services/auth";
+
+const canUseSalonScanner = (pathname: string) => pathname === "/mesas" && !!localStorage.getItem("urfood_token") && ["ADMIN", "OPERATOR"].includes(getCurrentUser()?.role ?? "");
 
 export function ScanTableButton({ className = "" }: { className?: string }) {
   const location = useLocation(), navigate = useNavigate();
+  if (!canUseSalonScanner(location.pathname)) return null;
   return <button type="button" className={`scan-table-button ${className}`} onClick={() => {
     const params = new URLSearchParams(location.search); params.set("leitor", "mesa");
     navigate({ pathname: location.pathname, search: params.toString() }, { state: { ...location.state, qrScanner: true }, preventScrollReset: true });
@@ -14,7 +18,7 @@ export function ScanTableButton({ className = "" }: { className?: string }) {
 
 export function TableScanner() {
   const location = useLocation(), navigate = useNavigate();
-  if (new URLSearchParams(location.search).get("leitor") !== "mesa") return null;
+  if (!canUseSalonScanner(location.pathname) || new URLSearchParams(location.search).get("leitor") !== "mesa") return null;
   const close = () => {
     if (location.state?.qrScanner) navigate(-1);
     else { const params = new URLSearchParams(location.search); params.delete("leitor"); navigate({ pathname: location.pathname, search: params.toString() }, { replace: true, state: location.state }); }

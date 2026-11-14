@@ -1,13 +1,13 @@
 import { compare, hash } from "bcryptjs";
-import { QueryTypes } from "sequelize";
+import { Op, QueryTypes } from "sequelize";
 import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../../config/env.js";
-import { Coupon, CustomerAccount, CustomerCoupon, Order, OrderItem, OrderItemOption, OrderStatusHistory } from "../../database/models.js";
+import { Coupon, CustomerRecord, CustomerAccount, CustomerCoupon, Order, OrderItem, OrderItemOption, OrderStatusHistory } from "../../database/models.js";
 import { sequelize } from "../../database/sequelize.js";
 import { requireAdmin, requireAuth } from "../../shared/auth.middleware.js";
+import { customerAliases, recordForPhone } from "./customer-records.js";
 import { couponWasUsedByPhone } from "../promotions/coupon.service.js";
-import { expireUnpaidOrders } from "../payments/payment-timeout.service.js";
 import { allowEmailAttempt, consumeEmailCode, normalizeEmail, sendEmailCode } from "./email-verification.service.js";
 
 export const publicCustomerRouter = Router();
@@ -21,11 +21,14 @@ async function phonesFor(phone: string) {
   return sequelize.query<{ customerPhone: string }>(`SELECT DISTINCT customer_phone AS customerPhone FROM orders WHERE ${phoneSql} = :phone`, { replacements: { phone }, type: QueryTypes.SELECT });
 }
 async function customerProfile(phone: string, customerAccountId?: string) {
-  const rows = await phonesFor(phone); if (!rows.length) return null;
-  await expireUnpaidOrders(undefined, rows.map(row => row.customerPhone));
+  const record = await recordForPhone(phone);
+  if (record?.getDataValue("deletedAt")) return null;
+  const rows = (await Promise.all(customerAliases(record, phone).map(phonesFor))).flat();
+  if (!rows.length && !record) return null;
   const orders = await Order.findAll({ where: customerAccountId ? { customerAccountId } : { customerPhone: rows.map((row) => row.customerPhone) }, include: [{ model: OrderItem, as: "items", include: [{ model: OrderItemOption, as: "selectedOptions" }] }, { model: OrderStatusHistory, as: "statusHistory" }], order: [["createdAt", "DESC"]] });
+  const contact = await CustomerAccount.findOne({ where: customerAccountId ? { id: customerAccountId } : { phone: customerAliases(record, phone) }, attributes: ["email"] });
   const plain = orders.map((order) => order.get({ plain: true }) as Record<string, unknown>); const completed = plain.filter((order) => order.status === "COMPLETED"); const totalSpent = completed.reduce((sum, order) => sum + Number(order.total), 0);
-  return { id: phone, name: plain[0]?.customerName, phone: plain[0]?.customerPhone, customerSince: plain.at(-1)?.createdAt, lastOrderAt: plain[0]?.createdAt, ordersCount: plain.length, completedOrders: completed.length, totalSpent, averageTicket: completed.length ? totalSpent / completed.length : 0, orders };
+  return { id: record?.getDataValue("originalPhone") ?? phone, name: record?.getDataValue("name") ?? plain[0]?.customerName, phone: record?.getDataValue("phone") ?? plain[0]?.customerPhone, email: contact?.getDataValue("email") ?? record?.getDataValue("email"), customerSince: plain.at(-1)?.createdAt ?? record?.getDataValue("createdAt"), lastOrderAt: plain[0]?.createdAt ?? record?.getDataValue("createdAt"), ordersCount: plain.length, completedOrders: completed.length, totalSpent, averageTicket: completed.length ? totalSpent / completed.length : 0, orders };
 }
 function customerToken(account: any) { return jwt.sign({ sub: String(account.getDataValue("id")), phone: String(account.getDataValue("phone")), role: "CUSTOMER" }, env.jwtSecret, { expiresIn: "30d" }); }
 async function authenticatedProfile(account: any) {
@@ -37,6 +40,13 @@ async function authenticatedProfile(account: any) {
   return { token: customerToken(account), customer: { ...profile, email: account.getDataValue("email"), emailVerified: Boolean(account.getDataValue("emailVerifiedAt")), claimedCouponCode: alreadyUsed ? null : claimedCode || null, usedCouponCodes } };
 }
 
+publicCustomerRouter.use(async (request, response, next) => {
+  const phone = cleanPhone(request.body?.phone);
+  const record = phone ? await recordForPhone(phone) : null;
+  if (record && record.getDataValue("phone") !== phone && !record.getDataValue("deletedAt")) { response.status(409).json({ message: "O telefone deste cadastro foi atualizado. Consulte a loja." }); return; }
+  if (record?.getDataValue("deletedAt")) { response.status(403).json({ message: "Cadastro exclu\u00eddo. Entre em contato com a loja." }); return; }
+  next();
+});
 publicCustomerRouter.post("/register", async (request, response) => {
   const phone = cleanPhone(request.body.phone); const password = request.body.password;
   if (phone.length < 10 || !validPassword(password)) { response.status(400).json({ message: "Informe um telefone válido e uma senha com pelo menos 6 caracteres." }); return; }
@@ -146,6 +156,73 @@ publicCustomerRouter.post("/coupons/:couponId/redeem", requireAuth, async (reque
 
 customerRouter.get("/", async (_request, response) => {
   const customers = await sequelize.query(`SELECT ${phoneSql} AS id, SUBSTRING_INDEX(GROUP_CONCAT(customer_name ORDER BY created_at DESC SEPARATOR '||'), '||', 1) AS name, SUBSTRING_INDEX(GROUP_CONCAT(customer_phone ORDER BY created_at DESC SEPARATOR '||'), '||', 1) AS phone, COUNT(*) AS ordersCount, SUM(CASE WHEN status = 'COMPLETED' THEN total ELSE 0 END) AS totalSpent, SUM(status = 'COMPLETED') AS completedOrders, MAX(created_at) AS lastOrderAt, MIN(created_at) AS customerSince FROM orders GROUP BY ${phoneSql} ORDER BY lastOrderAt DESC`, { type: QueryTypes.SELECT });
-  response.json(customers.map((raw) => { const item = raw as Record<string, unknown>; const completed = Number(item.completedOrders ?? 0); const total = Number(item.totalSpent ?? 0); return { ...item, ordersCount: Number(item.ordersCount), completedOrders: completed, totalSpent: total, averageTicket: completed ? total / completed : 0 }; }));
+  const records = await CustomerRecord.findAll();
+  const recordsByPhone = new Map<string, typeof records[number]>();
+  for (const record of records) for (const alias of customerAliases(record, String(record.getDataValue("originalPhone")))) recordsByPhone.set(alias, record);
+  const merged = new Map<string, any>();
+  for (const raw of customers) {
+    const item = raw as any;
+    if (String(item.id).length < 10 || String(item.id).length > 13) continue;
+    const record = recordsByPhone.get(String(item.id));
+    if (record?.getDataValue("deletedAt")) continue;
+    const id = String(record?.getDataValue("originalPhone") ?? item.id);
+    const previous = merged.get(id);
+    const completedOrders = Number(item.completedOrders ?? 0) + Number(previous?.completedOrders ?? 0);
+    const totalSpent = Number(item.totalSpent ?? 0) + Number(previous?.totalSpent ?? 0);
+    merged.set(id, { ...item, id, name: record?.getDataValue("name") ?? previous?.name ?? item.name,
+      phone: record?.getDataValue("phone") ?? previous?.phone ?? item.phone, email: record?.getDataValue("email") ?? null,
+      ordersCount: Number(item.ordersCount) + Number(previous?.ordersCount ?? 0), completedOrders, totalSpent, averageTicket: completedOrders ? totalSpent / completedOrders : 0,
+      lastOrderAt: previous && new Date(previous.lastOrderAt) > new Date(item.lastOrderAt) ? previous.lastOrderAt : item.lastOrderAt,
+      customerSince: previous && new Date(previous.customerSince) < new Date(item.customerSince) ? previous.customerSince : item.customerSince });
+  }
+  for (const record of records) {
+    const id = String(record.getDataValue("originalPhone"));
+    if (!record.getDataValue("deletedAt") && !merged.has(id)) merged.set(id, { id, name: record.getDataValue("name"), phone: record.getDataValue("phone"), email: record.getDataValue("email"), ordersCount: 0, completedOrders: 0, totalSpent: 0, averageTicket: 0, lastOrderAt: record.getDataValue("createdAt"), customerSince: record.getDataValue("createdAt") });
+  }
+  response.json([...merged.values()].sort((a, b) => new Date(b.lastOrderAt).getTime() - new Date(a.lastOrderAt).getTime()));
 });
 customerRouter.get("/:phone", async (request, response) => { const profile = await customerProfile(cleanPhone(request.params.phone)); if (!profile) { response.status(404).json({ message: "Cliente não encontrado." }); return; } response.json(profile); });
+
+customerRouter.patch("/:phone", async (request, response) => {
+  const originalPhone = cleanPhone(request.params.phone), phone = cleanPhone(request.body.phone);
+  const name = String(request.body.name ?? "").trim(), email = String(request.body.email ?? "").trim().toLowerCase();
+  if (!name || name.length > 120 || phone.length < 10 || String(request.body.phone ?? "").replace(/\D/g, "").length > 13 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || email.length > 254) { response.status(400).json({ message: "Informe nome, telefone e e-mail v\u00e1lidos." }); return; }
+  if (!await customerProfile(originalPhone)) { response.status(404).json({ message: "Cliente n\u00e3o encontrado." }); return; }
+  try {
+    await sequelize.transaction(async transaction => {
+      const records = await CustomerRecord.findAll({ transaction, lock: transaction.LOCK.UPDATE });
+      const record = records.find(record => customerAliases(record, String(record.getDataValue("originalPhone"))).includes(originalPhone));
+      if (record?.getDataValue("deletedAt")) throw Error("Cliente exclu\u00eddo.");
+      const aliases = customerAliases(record, originalPhone);
+      if (records.some(other => other !== record && customerAliases(other, String(other.getDataValue("originalPhone"))).includes(phone))) throw Error("Este telefone pertence a outro cadastro.");
+      const collision = !aliases.includes(phone) && (await phonesFor(phone)).length > 0;
+      if (collision) throw Error("Este telefone j\u00e1 possui hist\u00f3rico de outro cliente.");
+      const accounts = await CustomerAccount.findAll({ where: { phone: { [Op.in]: aliases } }, transaction, lock: transaction.LOCK.UPDATE });
+      const account = accounts[0];
+      if (await CustomerAccount.findOne({ where: { phone, ...(account ? { id: { [Op.ne]: account.getDataValue("id") } } : {}) }, transaction })) throw Error("Telefone vinculado a outra conta.");
+      if (account) await account.update({ phone, email: email || null, ...(account.getDataValue("email") !== (email || null) ? { emailVerifiedAt: null, pendingEmail: null, emailCodeHash: null, emailCodeExpiresAt: null, emailCodePurpose: null } : {}) }, { transaction });
+      const values = { phone, name, email: email || null, aliases: [...new Set([...aliases, phone])] };
+      if (record) await record.update(values, { transaction }); else await CustomerRecord.create({ originalPhone, ...values }, { transaction });
+    });
+    response.json(await customerProfile(originalPhone));
+  } catch (error) { response.status(409).json({ message: (error as Error).message }); }
+});
+customerRouter.delete("/:phone", async (request, response) => {
+  const phone = cleanPhone(request.params.phone);
+  const profile = await customerProfile(phone);
+  if (!profile) { response.status(404).json({ message: "Cliente n\u00e3o encontrado." }); return; }
+  await sequelize.transaction(async transaction => {
+    const record = await recordForPhone(phone, transaction);
+    if (record) await record.reload({ transaction, lock: transaction.LOCK.UPDATE });
+    const aliases = customerAliases(record, phone);
+    const accounts = await CustomerAccount.findAll({ where: { phone: { [Op.in]: aliases } }, transaction, lock: transaction.LOCK.UPDATE });
+    for (const account of accounts) {
+      await CustomerCoupon.destroy({ where: { customerAccountId: account.getDataValue("id") }, transaction });
+      await Order.update({ customerAccountId: null }, { where: { customerAccountId: account.getDataValue("id") }, transaction });
+      await account.destroy({ transaction });
+    }
+    if (record) await record.update({ deletedAt: new Date() }, { transaction });
+    else await CustomerRecord.create({ originalPhone: phone, phone, aliases, name: profile.name, deletedAt: new Date() }, { transaction });
+  });
+  response.status(204).end();
+});

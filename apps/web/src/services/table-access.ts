@@ -23,8 +23,10 @@ export function clearTableAccess(key: string) { grants.delete(key); discardLegac
 export async function authorizeTableScan(path: string, signal?: AbortSignal) {
   const key = /^\/mesa\/([a-f0-9]{64})$/.exec(path)?.[1];
   if (!key) throw new Error(TABLE_ACCESS_DENIED);
+  const token = localStorage.getItem("urfood_token");
+  if (!token) throw new Error(TABLE_ACCESS_DENIED);
   const response = await fetch(`${API_URL}/tables/scan`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }), signal,
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ key }), signal,
   });
   const data = await response.json();
   if (!response.ok || typeof data.accessToken !== "string") throw new Error(data.message ?? TABLE_ACCESS_DENIED);

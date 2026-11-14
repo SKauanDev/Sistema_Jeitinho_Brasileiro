@@ -18,7 +18,7 @@ import { orderRequestHeaders } from "./services/realtime";
 
 import { configuredPizzaPrice, configuredBorderPrice, stylesForProduct, sizesForStyle, selectedPizzaMenu, pizzaBorderMenu, compatibleFlavors, pizzaKind, flavorAlreadyChosen, isPizzaFlavor, productPrice, type PizzaSelection } from "./utils/pizza";
 import type { PizzaSize } from "./types/catalog";
-type CartItem = Product & { style?: PizzaStyle; size?: PizzaSize; quantity: number; selectedExtras: Extra[]; pizzaSelections: PizzaSelection[]; notes: string; unavailable?: boolean };
+type CartItem = Product & { chosenIngredients?: string[]; style?: PizzaStyle; size?: PizzaSize; quantity: number; selectedExtras: Extra[]; pizzaSelections: PizzaSelection[]; notes: string; unavailable?: boolean };
 
 function categoryIcon(category: string) {
   const name = category.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -52,6 +52,8 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
   const [activeCategory, setActiveCategory] = useState("");
   const [localMobileCategory, setLocalMobileCategory] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [chosenIngredients, setChosenIngredients] = useState<string[]>([]);
+  const [tableServiceAccepted, setTableServiceAccepted] = useState(false);
   const [selectedExtras, setSelectedExtras] = useState<Extra[]>([]);
   const [pizzaSelections, setPizzaSelections] = useState<PizzaSelection[]>([]);
   const [activePizzaSlot, setActivePizzaSlot] = useState(0);
@@ -145,7 +147,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
         if (!config.menus?.length && product.sizes?.length && !sizes.length) return [];
         return [{
         id: product.id, category: category.name, name: product.name, description: product.description ?? "",
-        price: stylePrices.length ? Math.min(...stylePrices.map(entry => entry.price)) : sizes.length ? Math.min(...sizes.map(entry => entry.price)) : Number(product.promotionalPrice ?? product.price), image: catalogImageUrl(product.imageUrl), popular: product.featured,
+        ingredients: product.ingredients ?? [], price: stylePrices.length ? Math.min(...stylePrices.map(entry => entry.price)) : sizes.length ? Math.min(...sizes.map(entry => entry.price)) : Number(product.promotionalPrice ?? product.price), image: catalogImageUrl(product.imageUrl), popular: product.featured,
         sizes: stylePrices.length ? (["P", "M", "G", "GG"] as const).flatMap(size => { const prices = stylePrices.filter(entry => entry.size === size).map(entry => entry.price); return prices.length ? [{ size, price: Math.min(...prices) }] : []; }) : sizes,
         pizzaSlots: product.pizzaSlots || (/pizza|premium/i.test(category.name) ? 1 : undefined),
         extras: product.optionGroups?.flatMap((group) => group.options.filter((option) => option.active).map((option) => ({ id: option.id, name: option.name, price: Number(option.priceDelta) }))),
@@ -219,6 +221,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
 
   function configureProduct(product: Product) {
     setSelectedProduct(product);
+    setChosenIngredients(product.ingredients ?? []);
     setLocalFlavorPickerOpen(false);
     setSelectedSize(undefined);
     const styles = isPizzaFlavor(product) ? stylesForProduct(product, rules) : [];
@@ -262,7 +265,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
 
   function addToCart() {
     if (!selected || !canAddProduct || tableOrderSending) return;
-    setCart((current) => [...current, { ...selected, price: selectedUnitPrice, style: selectedStyle, size: selectedSize, quantity, selectedExtras, pizzaSelections, notes: notes.trim() }]);
+    setCart((current) => [...current, { ...selected, chosenIngredients: selected.ingredients?.length ? chosenIngredients : undefined, price: selectedUnitPrice, style: selectedStyle, size: selectedSize, quantity, selectedExtras, pizzaSelections, notes: notes.trim() }]);
     setSelected(null);
   }
 
@@ -323,6 +326,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
   const activePizza = pizzaSelections[activePizzaSlot];
   const flavorName = (id?: string) => pizzaFlavors.find((flavor) => flavor.id === id)?.name ?? "Escolher";
   const checkoutItems = cart.map((item) => ({
+    ingredients: item.chosenIngredients,
     productId: item.id,
     style: item.style,
     size: item.size,
@@ -334,6 +338,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
     options: [
       ...(item.size ? [{ name: item.size, group: "Tamanho", price: 0 }] : []),
       ...item.selectedExtras.map((extra) => ({ optionId: extra.id, name: extra.name, group: "Adicionais", price: extra.price })),
+      ...(item.chosenIngredients ?? []).map(name => ({ name, group: "Ingredientes", price: 0 })),
       ...item.pizzaSelections.flatMap((pizza, index) => pizza.mode === "half"
         ? [{ name: flavorName(pizza.leftId), group: `Pizza ${index + 1} · 1ª metade`, price: 0 }, { name: flavorName(pizza.rightId), group: `Pizza ${index + 1} · 2ª metade`, price: 0 }]
         : [{ name: flavorName(pizza.leftId), group: `Pizza ${index + 1} · sabor inteiro`, price: 0 }]),
@@ -431,6 +436,8 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
         </section>
       </main>
 
+      {!manual && <footer className="catalog-credit">criado por <a href="https://www.kstechdev.com.br/work" target="_blank" rel="noopener noreferrer"><strong>kstech</strong></a></footer>}
+
       <button className="cart-fab" onClick={openCart} aria-label="Abrir carrinho">
         <ShoppingBag />{itemCount > 0 && <span>{itemCount}</span>}
       </button>
@@ -443,6 +450,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
             <button className="close" onClick={() => setSelected(null)} aria-label="Fechar"><X /></button>
             <div className="modal-image"><FoodImage src={selected.image} alt={selected.name} sizes="(max-width: 760px) 100vw, 600px" priority /></div>
             <div className="modal-content">
+              {!!selected.ingredients?.length && <fieldset className="sandwich-ingredients"><legend>Ingredientes incluídos</legend><p>Desmarque o que não deseja. O preço permanece o mesmo.</p>{selected.ingredients.map(name => <label key={name}><input type="checkbox" checked={chosenIngredients.includes(name)} onChange={event => setChosenIngredients(current => event.target.checked ? [...current, name] : current.filter(ingredient => ingredient !== name))} />{name}</label>)}</fieldset>}
               {selected.popular && <span className="eyebrow"><Star size={14} /> FAVORITO DA CASA</span>}
               <h2>{selected.name}</h2>
               <p className="modal-description">{selected.description}</p>
@@ -469,7 +477,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
                 {styledPizza && !selectedStyle ? <p className="pizza-size-hint">Escolha o estilo da massa e depois o tamanho.</p> : !!selected.sizes?.length && !selectedSize && <p className="pizza-size-hint">Escolha um tamanho para ver os sabores disponíveis.</p>}
                 <div className="pizza-flavors"><span>Selecione o sabor da {activePizza.mode === "whole" ? "pizza" : activePizzaHalf === "left" ? "1ª metade" : "2ª metade"}</span>{availableFlavors.map((flavor) => { const chosen = (activePizzaHalf === "right" && activePizza.mode === "half" ? activePizza.rightId : activePizza.leftId) === flavor.id; return <button key={flavor.id} className={chosen ? "chosen" : ""} aria-pressed={chosen} onClick={() => choosePizzaFlavor(flavor.id)}><FoodImage src={flavor.image} alt="" /><div><strong>{flavor.name}</strong><small>{flavor.description}</small>{styledPizza ? <small>{pizzaKind(flavor.category) === "PREMIUM" ? "Premium" : pizzaKind(flavor.category) === "SWEET" ? "Doce" : "Comum"}</small> : selected && isPizzaFlavor(selected) && <small className="flavor-price">{money(productPrice(flavor, selectedSize))}</small>}</div>{chosen && <Check />}</button>; })}</div>
               </section>}
-              {!!selected.extras?.length && <div className="extras">
+              {!!selected.extras?.length && !selected.ingredients?.length && <div className="extras">
                 <div><h3>Deixe do seu jeito</h3><span>Escolha quantos quiser</span></div>
                 {selected.extras.map((extra) => {
                   const checked = selectedExtras.some((item) => item.id === extra.id);
@@ -501,9 +509,9 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
           <div className="cart-body">
             {pricingNotice && <p className="checkout-operational-alert" role="status">{pricingNotice}</p>}
             {cart.some(item => item.unavailable) && <p className="checkout-error" role="alert">Uma pizza deixou de estar disponível nessa configuração. Remova-a e escolha novamente antes de continuar.</p>}
-            {checkingOut && table ? <TableCheckout table={table} subtotal={cartTotal} items={checkoutItems} notes={tableOrderNotes} onNotesChange={setTableOrderNotes} loading={tableOrderSending} onLoadingChange={setTableOrderSending} onBack={() => setCheckingOut(false)} onComplete={() => { setCart([]); setTableOrderNotes(""); flow.change({ view: null, product: null, flavors: false }); onTableOrder?.(); }} /> : checkingOut ? <CheckoutForm manual={manual} subtotal={cartTotal} items={checkoutItems} initialCouponCode={claimedCouponCode} onBack={() => setCheckingOut(false)} onComplete={(orderId, paymentPath) => { if (manual) { setCart([]); onManualComplete?.(); return; } if (!paymentPath) { const history = JSON.parse(localStorage.getItem("urfood_orders") ?? "[]") as Array<{ id: string; createdAt: string }>; localStorage.setItem("urfood_current_order", orderId); localStorage.setItem("urfood_orders", JSON.stringify([{ id: orderId, createdAt: new Date().toISOString() }, ...history.filter((order) => order.id !== orderId)].slice(0, 20))); } if (claimedCouponCode) { const used = [...new Set([...usedCouponCodes, claimedCouponCode.toUpperCase()])]; localStorage.setItem("urfood_used_coupons", JSON.stringify(used)); setUsedCouponCodes(used); } localStorage.removeItem("urfood_claimed_coupon"); setClaimedCouponCode(""); setCart([]); window.location.href = paymentPath ? `/pagamento/${paymentPath}/${orderId}` : `/status/${orderId}`; }} /> : <>
+            {checkingOut && table ? <TableCheckout serviceAccepted={tableServiceAccepted} onServiceAcceptedChange={setTableServiceAccepted} table={table} subtotal={cartTotal} items={checkoutItems} notes={tableOrderNotes} onNotesChange={setTableOrderNotes} loading={tableOrderSending} onLoadingChange={setTableOrderSending} onBack={() => setCheckingOut(false)} onComplete={() => { setCart([]); setTableOrderNotes(""); setTableServiceAccepted(false); flow.change({ view: null, product: null, flavors: false }); onTableOrder?.(); }} /> : checkingOut ? <CheckoutForm manual={manual} subtotal={cartTotal} items={checkoutItems} initialCouponCode={claimedCouponCode} onBack={() => setCheckingOut(false)} onComplete={(orderId, paymentPath) => { if (manual) { setCart([]); onManualComplete?.(); return; } if (!paymentPath) { const history = JSON.parse(localStorage.getItem("urfood_orders") ?? "[]") as Array<{ id: string; createdAt: string }>; localStorage.setItem("urfood_current_order", orderId); localStorage.setItem("urfood_orders", JSON.stringify([{ id: orderId, createdAt: new Date().toISOString() }, ...history.filter((order) => order.id !== orderId)].slice(0, 20))); } if (claimedCouponCode) { const used = [...new Set([...usedCouponCodes, claimedCouponCode.toUpperCase()])]; localStorage.setItem("urfood_used_coupons", JSON.stringify(used)); setUsedCouponCodes(used); } localStorage.removeItem("urfood_claimed_coupon"); setClaimedCouponCode(""); setCart([]); window.location.href = paymentPath ? `/pagamento/${paymentPath}/${orderId}` : `/status/${orderId}`; }} /> : <>
             {cart.length === 0 ? <div className="empty-cart"><ShoppingBag /><h3>Seu carrinho está vazio</h3><p>Escolha algo delicioso no cardápio.</p></div> : cart.map((item, index) => (
-              <div className="cart-line" key={`${item.id}-${index}`}><FoodImage src={item.image} alt="" /><div><h3>{item.quantity}x {item.name}{item.size ? ` (${item.size})` : ""}</h3>{item.style && <small className="cart-pizza-style">{PIZZA_STYLES[item.style]}{item.pizzaSelections.some(pizza => pizza.borderId) ? " + borda recheada" : ""}</small>}<p>{item.pizzaSelections.length ? item.pizzaSelections.map((pizza, pizzaIndex) => `Pizza ${pizzaIndex + 1}: ${flavorName(pizza.leftId)}${pizza.mode === "half" ? ` / ${flavorName(pizza.rightId)}` : ""}`).join(" · ") : item.selectedExtras.map((extra) => extra.name).join(", ") || "Sem adicionais"}</p><strong>{money((item.price + item.selectedExtras.reduce((sum, extra) => sum + extra.price, 0)) * item.quantity)}</strong></div><button disabled={tableOrderSending} onClick={() => setCart((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={17} /></button></div>
+              <div className="cart-line" key={`${item.id}-${index}`}><FoodImage src={item.image} alt="" /><div><h3>{item.quantity}x {item.name}{item.size ? ` (${item.size})` : ""}</h3>{item.style && <small className="cart-pizza-style">{PIZZA_STYLES[item.style]}{item.pizzaSelections.some(pizza => pizza.borderId) ? " + borda recheada" : ""}</small>}<p>{item.pizzaSelections.length ? item.pizzaSelections.map((pizza, pizzaIndex) => `Pizza ${pizzaIndex + 1}: ${flavorName(pizza.leftId)}${pizza.mode === "half" ? ` / ${flavorName(pizza.rightId)}` : ""}`).join(" · ") : item.chosenIngredients ? (item.chosenIngredients.join(", ") || "Sem ingredientes opcionais") : item.selectedExtras.map((extra) => extra.name).join(", ") || "Sem adicionais"}</p><strong>{money((item.price + item.selectedExtras.reduce((sum, extra) => sum + extra.price, 0)) * item.quantity)}</strong></div><button disabled={tableOrderSending} onClick={() => setCart((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={17} /></button></div>
             ))}
             </>}
           </div>

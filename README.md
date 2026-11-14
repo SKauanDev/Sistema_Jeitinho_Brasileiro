@@ -8,7 +8,7 @@ Sistema de pedidos para a Pizzaria Borda Dourada, com cardápio digital, montage
 - Escolha de sabores por pizza, inclusive em combos com várias pizzas.
 - Preços por tamanho P, M, G e GG no mesmo cadastro. O cliente escolhe um tamanho; no meio a meio, vale o maior preço dos dois sabores nesse tamanho. Sabores repetidos na mesma pizza são bloqueados.
 - Carrinho, checkout, entrega ou retirada e acompanhamento do pedido.
-- Pagamentos via Mercado Pago: Pix e cartão.
+- Pagamento online registrado e confirmado pela equipe, sem cobrança pela API.
 - Painel com dashboard, pedidos, cardápio, estoque, clientes, financeiro, cupons, relatórios, configurações e usuários.
 - Atualizações em tempo real com Socket.IO.
 - Cupons com validade e regras de desconto. Desativar mantém o cadastro; a lixeira exclui o cupom e seus vínculos de resgate. Os descontos registrados nos pedidos são preservados.
@@ -68,7 +68,7 @@ npm run dev
 | Perfil do cliente | http://localhost:5173/perfil |
 | Saúde da API | http://localhost:3333/health |
 
-No desenvolvimento, o Vite encaminha `/api` para a API na porta 3333 e `/socket.io` para o servidor de eventos. As rotas do Express não possuem prefixo `/api` diretamente.
+No desenvolvimento, `npm run dev` aguarda a resposta de `/health` antes de iniciar o frontend, evitando erros de proxy durante a conexão inicial ao banco. Se a API não ficar pronta em 90 segundos, confira seu erro no terminal. O proxy usa `HOST` e `PORT` do backend (porta padrão 3333), convertendo `0.0.0.0` em `127.0.0.1` para a conexão local, tanto em `/api` quanto em `/socket.io`. As rotas do Express não possuem prefixo `/api` diretamente.
 
 Se o PowerShell bloquear `npm.ps1`, utilize `npm.cmd`. Após alterar o `.env` do backend, reinicie a API.
 
@@ -309,7 +309,7 @@ Em **Mesas e comandas**, o padrão é 40 mesas. Ajuste a quantidade para ocultar
 
 O cliente escaneia, abre a comanda e envia pedidos com observações diretamente à cozinha. O consumo não exige nome, telefone ou endereço e não recebe taxa de entrega ou taxa digital. Novos pedidos entram na central com os mesmos alertas de som. A equipe confere o consumo e registra a forma de recebimento ao fechar a conta; esse registro não dispara uma cobrança eletrônica. O sistema verifica se o consumo e a sessão ainda são os mesmos antes de fechar. A próxima abertura cria uma sessão nova. Pedidos de contas recebidas não podem ser cancelados pela central.
 
-O botão **Escanear** está no módulo de mesas, no cardápio público e na página da comanda. A entrada pública `/comanda` também permite abrir o leitor. Ele solicita a câmera traseira, lê o QR no próprio navegador, valida a mesa na API e navega na mesma aba. QR codes externos são recusados; links antigos dos domínios do restaurante são convertidos para a rota local. A câmera é liberada ao fechar o leitor, sair da tela ou colocar a página em segundo plano. A colagem de links foi removida desse fluxo.
+O botão **Escanear** fica exclusivamente em **Atendimento no salão / Mesas e comandas** (`/mesas`), para Administrador e Operador autenticados. A API também exige a autenticação da equipe e uma origem permitida para autorizar a leitura. O cardápio público, `/comanda` e o acesso direto à mesa não exibem botão nem abrem a câmera, mesmo acrescentando `?leitor=mesa`. O leitor interno solicita a câmera traseira, valida o QR e navega na mesma aba. QR codes externos são recusados; links antigos dos domínios do restaurante são convertidos para a rota local. A câmera é liberada ao fechar o leitor, sair da tela ou colocar a página em segundo plano.
 
 Abrir o endereço da mesa diretamente mostra **“Não autorizado, validado apenas pelo sistema.”** A API exige uma autorização assinada específica da mesa para consultar consumo, abrir a comanda e enviar pedidos. A autorização fica somente na memória do documento aberto pelo leitor do sistema, não no armazenamento do navegador, no QR ou na URL: vale por 5 minutos antes da abertura e por até 4 horas para a sessão aberta. Uma nova abertura pelo leitor do celular, por link digitado, nova aba ou atualização completa da página exige escanear novamente pelo sistema, mesmo que a aba tenha uma autorização antiga salva. Voltar e avançar entre as etapas internas da comanda continuam funcionando na mesma página. Após fechar a conta, o acesso vinculado àquela sessão é recusado. O admin também usa o botão **Escanear** para entrar no cardápio da mesa.
 
@@ -331,6 +331,12 @@ npm run db:migrate-inventory-removal -w @urfood/api
 
 A exclusão retira o item do estoque e impede que a sincronização do catálogo o recrie. O produto do cardápio permanece disponível; o histórico de movimentações é preservado para consulta e estornos de pedidos anteriores.
 
+O estoque está dividido em **Visão geral**, **Itens**, **Reposição**, **Movimentações** e **Categorias**. A visão geral destaca faltas e atividades recentes. Em Reposição, os itens aparecem por urgência, com sugestão para completar o mínimo e custo estimado. Itens tem busca, filtros e páginas de 25 registros; Movimentações permite consultar os últimos 200 registros por tipo, item, motivo ou responsável. O histórico individual continua disponível em cada item.
+
+Em **Categorias**, use a lixeira no canto do cartão para excluir a categoria junto com todos os seus itens de estoque, inclusive os ocultos. A confirmação mostra os itens ativos antes da exclusão. A operação é transacional e preserva os produtos do cardápio e o histórico de movimentações. A sincronização não recria a categoria nem os itens excluídos e deixa de importar novos produtos dessa categoria do cardápio.
+
+Marque as caixas na lista de itens para excluir individualmente ou em lote. **Selecionar todos os resultados** inclui todas as páginas do filtro atual; mudar a busca, categoria, situação ou seção limpa a seleção. Antes de excluir, a janela lista os nomes para conferência. O limite é de 1.000 itens por operação. A API verifica a seleção e remove o lote numa transação; uma seleção desatualizada não gera exclusão parcial. As permissões são as mesmas do módulo de estoque.
+
 No cardápio administrativo, clique no cabeçalho **Produto** para ordenar de A–Z; o próximo clique inverte para Z–A. A ordenação respeita a busca e a categoria selecionada.
 
 ## Imagens do cardápio
@@ -345,25 +351,51 @@ node --import tsx apps/api/src/diagnostics/optimize-web-images.ts
 
 Ao publicar esta atualização, execute `npm ci` na raiz do VPS antes de compilar e reiniciar a API, para instalar o processador de imagens. Publique também o frontend atualizado na Vercel.
 
-## Mercado Pago
+## Operação: motoboys, correções, serviço e sanduíches
 
-Configure no backend as credenciais da aplicação e a assinatura secreta do webhook. No painel Mercado Pago, utilize o endpoint:
-
-```text
-https://api.seu-dominio.com/payments/mercado-pago/webhook
-```
-
-Os tópicos utilizados são `order` para Pix e `payment` para cartão e fluxos anteriores. Se houver um prefixo público no proxy, inclua-o também em `API_PUBLIC_URL` e no endereço cadastrado.
-
-Diagnóstico sem criar cobranças:
+Antes de iniciar a nova API em outro banco, execute na raiz:
 
 ```powershell
-npm run check:payments -w @urfood/api
+npm run db:migrate-operations -w @urfood/api
 ```
 
-O diagnóstico consulta credenciais e disponibilidade do endereço público; não substitui um pagamento completo para validar checkout, notificação e recebimento. Confira o ambiente das credenciais antes de realizar uma compra.
+A migração adiciona colunas e tabelas, preserva os pedidos e atualiza a regra de consistência dos totais para incluir o serviço. É segura para repetir. Ao atualizar o VPS, compile e reinicie a API e publique o frontend na Vercel.
 
-Detalhes: [integração com Mercado Pago](docs/mercado-pago.md) e [revisão de segurança](docs/revisao-seguranca.md). A revisão registra o estado observado na sua data; não representa uma verificação automática do deploy atual.
+- **Configurações → Entrega → Motoboys:** cadastre nome e telefone com máscara brasileira. É possível desativar, reativar ou excluir pela lixeira. A exclusão preserva o nome e as taxas nos pedidos anteriores; motoboys excluídos não podem ser atribuídos a novos pedidos.
+- **Pedidos → abrir pedido → Editar pedido / recebimento:** ao lado da taxa de entrega, selecione o motoboy. O mesmo formulário corrige cliente, endereço, atendimento, mesa, status, itens, quantidades, opções, preços, descontos, taxas, observações e recebimento, inclusive em pedidos finalizados ou cancelados. Informe o motivo. Atualizações concorrentes são recusadas. O sistema registra antes/depois e autor, ajusta estoque por revisão e recalcula o total da conta encerrada quando houver.
+- **Recebimento manual:** Online e Pix ficam aguardando confirmação da equipe. No editor, selecione **Recebido** após conferir o pagamento. Não há cobrança, checkout, webhook, SDK nem consulta periódica ao Mercado Pago no fluxo ativo. O pedido é registrado e notificado à equipe; não expira automaticamente por aguardar confirmação manual. Somente a equipe pode marcar como recebido; o perfil Cozinha não pode editar valores ou recebimentos. Pagamento online já recebido continua disponível no pedido manual.
+- **Comanda mobile:** na finalização, escolha Sim ou Não para a taxa opcional de 10% do garçom; o padrão é Não. O resumo mostra o acréscimo antes do envio. O servidor calcula sobre o subtotal líquido de desconto, sem taxa de entrega ou taxa digital. A impressão, consumo e fechamento incluem o valor aceito. A equipe pode corrigir a escolha pelo editor.
+- **Sanduíches:** cadastre o valor único e os ingredientes incluídos, um por linha, no formulário do produto. Todos começam marcados; o cliente desmarca o que não deseja, sem alterar o preço. As escolhas aparecem no pedido e na impressão. Alterar os ingredientes não altera automaticamente o estoque de insumos; o controle existente continua vinculado ao produto vendido.
+
+Os módulos antigos de Mercado Pago e suas variáveis permanecem somente como código histórico, fora das rotas e tarefas da aplicação em execução. Não configure webhooks para esta versão. A documentação anterior de integração descreve o fluxo legado.
+
+## Clientes, exclusão do desenvolvedor e datas dos pedidos
+
+Para preparar outro banco antes de iniciar a API atualizada:
+
+```powershell
+npm run db:migrate-customer-management -w @urfood/api
+```
+
+Em **Clientes**, abra o cadastro para usar **Editar cliente** ou **Excluir cliente**. Nome, telefone e e-mail podem ser corrigidos sem reescrever os dados dos pedidos antigos. O histórico continua agrupado após trocar o telefone. Excluir remove o acesso da conta e o cliente da listagem, preservando os pedidos e valores financeiros. Um registro interno impede que os pedidos antigos recriem automaticamente o cliente excluído.
+
+A conta `devk` foi autorizada no banco configurado. Em um banco novo, a permissão precisa ser atribuída explicitamente a um administrador ativo, por uma operação local com acesso ao banco:
+
+```powershell
+npm run db:set-developer -w @urfood/api -- devk
+```
+
+Ser administrador não concede essa permissão. Ela não pode ser alterada pelo cadastro de usuários nem por campos enviados no navegador. A API consulta a conta ativa a cada requisição.
+
+Somente o desenvolvedor vê a lixeira nos pedidos concluídos/cancelados e a lista **Mesas e comandas → Comandas encerradas**. A exclusão é definitiva, retira os pedidos dos relatórios e registra quem excluiu. Produtos já vendidos não retornam ao estoque; movimentações de estoque são preservadas. Pedidos individuais concluídos ou cancelados podem ser excluídos inclusive enquanto a conta da mesa está aberta; isso recalcula o consumo, mas não encerra a conta nem remove a mesa. A exclusão conjunta exige uma comanda encerrada com todos os pedidos concluídos ou cancelados.
+
+Pedidos finalizados mostram **hoje**, **ontem** ou **há N dias**, além da data. A referência é a conclusão ou o último cancelamento registrado; pedidos ainda em atendimento continuam mostrando minutos.
+
+## Financeiro
+
+O seletor compacto de mês mostra o mês atual até hoje; o botão ao lado permite escolher um intervalo. As datas dos pedidos seguem o fuso de São Paulo. O faturamento considera pedidos concluídos, independentemente da confirmação manual do recebimento; lançamentos de caixa continuam separados.
+
+A composição apresenta produtos, descontos, entrega, serviço do garçom e taxa digital. As taxas já integram o total dos pedidos e não são somadas novamente. O serviço mostra também a base de cálculo e a quantidade de pedidos com cobrança. As entregas são agrupadas pelo motoboy atribuído ao pedido, com uma linha para as sem responsável; excluir um cadastro preserva seus valores históricos. O gráfico compara entrega, consumo interno e retirada por faturamento ou quantidade de pedidos.
 
 ## Comandos úteis
 
@@ -378,6 +410,5 @@ Execute a partir da raiz:
 | `npm run build -w @urfood/api` | Compila somente a API |
 | `npm start` | Inicia a API compilada; não serve o frontend |
 | `npm run preview -w @urfood/web` | Prévia do frontend compilado; não inicia a API nem o proxy de desenvolvimento |
-| `npm run check:payments -w @urfood/api` | Diagnóstico dos pagamentos |
 
 Não publique `.env`, anotações com credenciais ou backups do banco. Use os exemplos como modelo e configure os valores reais no ambiente de cada serviço.

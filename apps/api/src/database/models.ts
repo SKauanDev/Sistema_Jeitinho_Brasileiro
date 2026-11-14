@@ -9,6 +9,7 @@ const id = {
 
 export const User = sequelize.define("User", {
   id,
+  isDeveloper: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   name: { type: DataTypes.STRING(120), allowNull: false },
   username: { type: DataTypes.STRING(80), allowNull: false, unique: true },
   email: { type: DataTypes.STRING(190), allowNull: false, unique: true },
@@ -31,6 +32,16 @@ export const CustomerAccount = sequelize.define("CustomerAccount", {
   passwordHash: { type: DataTypes.STRING(255), allowNull: false },
   active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
 }, { tableName: "customer_accounts" });
+export const CustomerRecord = sequelize.define("CustomerRecord", {
+  id, originalPhone: { type: DataTypes.STRING(13), allowNull: false, unique: true },
+  phone: { type: DataTypes.STRING(13), allowNull: false, unique: true },
+  aliases: { type: DataTypes.JSON, allowNull: false },
+  name: DataTypes.STRING(120), email: DataTypes.STRING(254), deletedAt: DataTypes.DATE(3),
+}, { tableName: "customer_records" });
+export const DeletionLog = sequelize.define("DeletionLog", {
+  id, entityType: { type: DataTypes.STRING(30), allowNull: false }, entityId: { type: DataTypes.UUID, allowNull: false },
+  userId: { type: DataTypes.UUID, allowNull: false }, reference: DataTypes.STRING(120), snapshot: DataTypes.JSON,
+}, { tableName: "deletion_logs", updatedAt: false, indexes: [{ fields: ["entity_id"] }] });
 
 export const CustomerCoupon = sequelize.define("CustomerCoupon", {
   id,
@@ -51,6 +62,7 @@ export const Category = sequelize.define("Category", {
 
 export const Product = sequelize.define("Product", {
   id,
+  ingredients: DataTypes.JSON,
   categoryId: { type: DataTypes.UUID, allowNull: false },
   name: { type: DataTypes.STRING(160), allowNull: false },
   description: DataTypes.TEXT,
@@ -101,6 +113,11 @@ export const ProductOptionGroup = sequelize.define("ProductOptionGroup", {
 
 export const Order = sequelize.define("Order", {
   id,
+  courierId: DataTypes.UUID,
+  courierName: DataTypes.STRING(120),
+  serviceFee: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
+  serviceFeeAccepted: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  inventoryRevision: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
   diningSessionId: DataTypes.UUID,
   tableNumber: DataTypes.INTEGER.UNSIGNED,
   customerAccountId: DataTypes.UUID,
@@ -196,6 +213,16 @@ export const DiningTable = sequelize.define("DiningTable", {
   accessKey: { type: DataTypes.STRING(64), allowNull: false, unique: true },
   sessionId: DataTypes.UUID,
 }, { tableName: "dining_tables" });
+export const Courier = sequelize.define("Courier", {
+  id, name: { type: DataTypes.STRING(120), allowNull: false }, phone: DataTypes.STRING(30),
+  active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+}, { tableName: "couriers" });
+export const OrderEdit = sequelize.define("OrderEdit", {
+  id, orderId: { type: DataTypes.UUID, allowNull: false },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  reason: { type: DataTypes.STRING(500), allowNull: false },
+  before: { type: DataTypes.JSON, allowNull: false }, after: { type: DataTypes.JSON, allowNull: false },
+}, { tableName: "order_edits", updatedAt: false, indexes: [{ fields: ["order_id"] }] });
 export const DiningSession = sequelize.define("DiningSession", {
   id,
   tableId: { type: DataTypes.UUID, allowNull: false },

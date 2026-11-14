@@ -1,3 +1,4 @@
+import { isDeveloper } from "../../shared/developer.middleware.js";
 import { Op, QueryTypes } from "sequelize";
 import { Router } from "express";
 import type { Server } from "socket.io";
@@ -12,7 +13,6 @@ import {
   DiningTable,
 } from "../../database/models.js";
 import { sequelize } from "../../database/sequelize.js";
-import { expireUnpaidOrders } from "../payments/payment-timeout.service.js";
 import { ADMIN_ROOM } from "../../realtime/socket-security.js";
 import { requireAdminArea, requireAuth } from "../../shared/auth.middleware.js";
 import {
@@ -228,7 +228,6 @@ adminRouter.get("/orders/store", async (_request, response) => {
 });
 
 adminRouter.get("/orders", async (_request, response) => {
-  await expireUnpaidOrders(_request.app.get("io") as Server | undefined);
   const orders = await Order.findAll({
     include: [
       {
@@ -241,7 +240,8 @@ adminRouter.get("/orders", async (_request, response) => {
     order: [["createdAt", "DESC"]],
     limit: 200,
   });
-  response.json(orders);
+  const developer = isDeveloper(response.locals.user);
+  response.json(orders.map(order => ({ ...order.get({ plain: true }), canDelete: developer && ["COMPLETED", "CANCELED"].includes(String(order.getDataValue("status"))) })));
 });
 
 adminRouter.patch("/orders/:id/status", async (request, response) => {

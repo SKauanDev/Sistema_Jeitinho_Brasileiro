@@ -1,3 +1,4 @@
+import { parseIngredients } from "./ingredients.js";
 import { parseSizes } from "./pizza-sizes.js";
 import { Op } from "sequelize";
 import { Router } from "express";
@@ -347,10 +348,10 @@ adminCatalogRouter.post("/products", async (request, response) => {
       .json({ message: "Nome, categoria e preço válido são obrigatórios." });
     return;
   }
-  let sizes;
-  try { sizes = parseSizes(request.body.sizes); } catch (error) { response.status(400).json({ message: (error as Error).message }); return; }
+  let sizes; let ingredients;
+  try { sizes = parseSizes(request.body.sizes); ingredients = parseIngredients(request.body.ingredients); } catch (error) { response.status(400).json({ message: (error as Error).message }); return; }
   const product = await Product.create({
-    sizes,
+    ingredients, sizes,
     name,
     categoryId,
     description: request.body.description,
@@ -372,6 +373,7 @@ adminCatalogRouter.patch("/products/:id", async (request, response) => {
     return;
   }
   const changes: Record<string, unknown> = {};
+  if (request.body.ingredients !== undefined) { try { changes.ingredients = parseIngredients(request.body.ingredients); } catch (error) { response.status(400).json({ message: (error as Error).message }); return; } }
   if (request.body.sizes !== undefined) {
     try { changes.sizes = parseSizes(request.body.sizes); } catch (error) { response.status(400).json({ message: (error as Error).message }); return; }
   }

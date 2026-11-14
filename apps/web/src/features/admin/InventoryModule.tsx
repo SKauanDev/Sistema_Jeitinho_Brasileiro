@@ -1,4 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import "./inventory.css";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -59,88 +61,161 @@ const statusOf = (item: InventoryItem) => {
 };
 const shortageOf = (item: InventoryItem) =>
   Math.max(Number(item.minimumStock) - Number(item.currentStock), 0);
-const levelOf = (item: InventoryItem) =>
-  Number(item.minimumStock) > 0
-    ? Math.min(
-        (Number(item.currentStock) / Number(item.minimumStock)) * 100,
-        100,
-      )
-    : 100;
+type StockSection =
+  "overview" | "items" | "restock" | "movements" | "categories";
+const stockSections = [
+  { id: "overview", label: "Visão geral", icon: BarChart3 },
+  { id: "items", label: "Itens", icon: Package },
+  { id: "restock", label: "Reposição", icon: ArrowDownToLine },
+  { id: "movements", label: "Movimentações", icon: History },
+  { id: "categories", label: "Categorias", icon: Boxes },
+] as const;
+const stockStatusLabel = (item: InventoryItem) =>
+  ({
+    ok: "Normal",
+    low: "Estoque baixo",
+    critical: "Crítico",
+    out: "Sem estoque",
+  })[statusOf(item)];
 
 export function InventoryModule() {
-  const [removingIds, setRemovingIds] = useState<string[]>([]);
+  const [params, setParams] = useSearchParams();
+  const section: StockSection = stockSections.some(
+    (tab) => tab.id === params.get("secao"),
+  )
+    ? (params.get("secao") as StockSection)
+    : "overview";
   const [data, setData] = useState<InventoryData | null>(null);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
-  const [recentMovements, setRecentMovements] = useState<InventoryMovement[]>([]);
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [recentMovements, setRecentMovements] = useState<InventoryMovement[]>(
+    [],
+  );
+  const [query, setQuery] = useState(""),
+    [filter, setFilter] = useState("all"),
+    [selectedCategory, setSelectedCategory] = useState("");
+  const [movementType, setMovementType] = useState("all");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deleteIds, setDeleteIds] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
   const [itemDialog, setItemDialog] = useState<InventoryItem | "new" | null>(
     null,
   );
   const [movementItem, setMovementItem] = useState<InventoryItem | null>(null);
   const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState("");
-  const [summaryDialog, setSummaryDialog] = useState<"all" | "restock" | "out" | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [categoryDialog, setCategoryDialog] = useState(false),
+    [categoryName, setCategoryName] = useState("");
+  const [deleteCategory, setDeleteCategory] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true),
+    [refreshing, setRefreshing] = useState(false),
+    [saving, setSaving] = useState(false),
+    [error, setError] = useState("");
+  const loadSequence = useRef(0);
   const load = async () => {
-    setError("");
+    const sequence = ++loadSequence.current;
+    setRefreshing(true);
     try {
-      const [inventory, recent] = await Promise.all([inventoryApi.list(), inventoryApi.movements()]);
+      const [inventory, recent] = await Promise.all([
+        inventoryApi.list(),
+        inventoryApi.movements(),
+      ]);
+      if (sequence !== loadSequence.current) return;
       setData(inventory);
       setRecentMovements(recent);
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Falha ao carregar estoque.",
+      setSelectedIds((ids) =>
+        ids.filter((id) => inventory.items.some((item) => item.id === id)),
       );
+    } catch (reason) {
+      if (sequence === loadSequence.current)
+        setError((reason as Error).message || "Falha ao carregar estoque.");
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
   useEffect(() => {
     void load();
-  }, []);
-  useEffect(() => {
     const socket = createAdminSocket();
     const refresh = () => void load();
     socket.on("order:new", refresh);
     socket.on("order:updated", refresh);
-    return () => { socket.off("order:new", refresh); socket.off("order:updated", refresh); socket.disconnect(); };
+    return () => {
+      socket.disconnect();
+    };
   }, []);
+  useEffect(() => {
+    setSelectedIds([]);
+    setPage(1);
+  }, [section, query, filter, selectedCategory]);
+  const allItems = data?.items ?? [];
+  const categoryNames = [
+    ...new Set([
+      ...(data?.categories ?? []).map((category) => category.name),
+      ...allItems.map((item) => item.category),
+    ]),
+  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const alerts = allItems.filter((item) => statusOf(item) !== "ok");
+  const priorityItems = [...alerts].sort(
+    (a, b) =>
+      ({ out: 0, critical: 1, low: 2, ok: 3 })[statusOf(a)] -
+        { out: 0, critical: 1, low: 2, ok: 3 }[statusOf(b)] ||
+      a.name.localeCompare(b.name, "pt-BR"),
+  );
   const items = useMemo(
     () =>
-      (data?.items ?? []).filter(
-        (item) =>
-          !!selectedCategory &&
-          item.category === selectedCategory &&
-          `${item.name} ${item.category}`
-            .toLowerCase()
-            .includes(query.toLowerCase()) &&
-          (filter === "all" || statusOf(item) === filter),
-      ),
-    [data, query, filter, selectedCategory],
+      (data?.items ?? [])
+        .filter(
+          (item) =>
+            (!selectedCategory || item.category === selectedCategory) &&
+            `${item.name} ${item.category}`
+              .toLocaleLowerCase("pt-BR")
+              .includes(query.toLocaleLowerCase("pt-BR")) &&
+            (filter === "all" || statusOf(item) === filter) &&
+            (section !== "restock" || statusOf(item) !== "ok"),
+        )
+        .sort((a, b) =>
+          section === "restock"
+            ? { out: 0, critical: 1, low: 2, ok: 3 }[statusOf(a)] -
+                { out: 0, critical: 1, low: 2, ok: 3 }[statusOf(b)] ||
+              a.name.localeCompare(b.name, "pt-BR")
+            : a.name.localeCompare(b.name, "pt-BR"),
+        ),
+    [data, query, filter, selectedCategory, section],
   );
-  const allItems = data?.items ?? [];
-  const normalItems = allItems.filter((item) => statusOf(item) === "ok");
-  const alertItems = allItems.filter((item) => statusOf(item) !== "ok");
-  const linkedItems = allItems.filter((item) => item.productId);
-  const configuredItems = allItems.filter((item) => Number(item.minimumStock) > 0);
-  const healthScore = allItems.length ? Math.round((normalItems.length / allItems.length) * 100) : 100;
-  const priorityItems = [...alertItems].sort((a, b) => {
-    const weight = { out: 0, critical: 1, low: 2, ok: 3 };
-    return weight[statusOf(a)] - weight[statusOf(b)] || shortageOf(b) - shortageOf(a);
-  }).slice(0, 5);
+  const pageCount = Math.max(1, Math.ceil(items.length / 25)),
+    currentPage = Math.min(page, pageCount),
+    visibleItems = items.slice((currentPage - 1) * 25, currentPage * 25);
+  const allSelected =
+    items.length > 0 && items.every((item) => selectedIds.includes(item.id));
+  const filteredMovements = recentMovements.filter(
+    (movement) =>
+      (movementType === "all" || movement.type === movementType) &&
+      `${movement.item?.name ?? ""} ${movement.reason} ${movement.createdBy ?? ""}`
+        .toLocaleLowerCase("pt-BR")
+        .includes(query.toLocaleLowerCase("pt-BR")),
+  );
+  function navigateSection(next: StockSection, category = "", status = "all") {
+    setQuery("");
+    setFilter(status);
+    setSelectedCategory(category);
+    setMovementType("all");
+    setSelectedIds([]);
+    setPage(1);
+    setParams((current) => {
+      const nextParams = new URLSearchParams(current);
+      nextParams.set("secao", next);
+      return nextParams;
+    });
+  }
   async function openHistory(item: InventoryItem) {
-    setHistoryItem(item);
+    setError("");
     try {
-      setMovements(await inventoryApi.movements(item.id));
+      const result = await inventoryApi.movements(item.id);
+      setMovements(result);
+      setHistoryItem(item);
     } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : "Falha ao carregar histórico.",
-      );
+      setError((reason as Error).message);
     }
   }
   if (loading)
@@ -151,383 +226,844 @@ export function InventoryModule() {
       </div>
     );
   return (
-    <div className="admin-module inventory-module-pro">
+    <div className="admin-module stock-workspace">
       <div className="module-title">
         <div>
           <span>OPERAÇÃO</span>
           <h1>Estoque</h1>
-          <p>Visão operacional, reposição e baixas automáticas integradas ao cardápio.</p>
+          <p>Saiba o que tem, o que precisa comprar e o que entrou ou saiu.</p>
         </div>
-        <div className="inventory-title-actions">
+        <div className="stock-title-actions">
           <button
             className="secondary-admin"
-            onClick={async () => {
-              const name = window.prompt("Nome da nova categoria:")?.trim();
-              if (!name) return;
-              try {
-                await inventoryApi.createCategory(name);
-                await load();
-              } catch (reason) {
-                setError(
-                  reason instanceof Error
-                    ? reason.message
-                    : "Falha ao criar categoria.",
-                );
-              }
+            disabled={refreshing}
+            onClick={() => {
+              setError("");
+              void load();
             }}
+            aria-label="Atualizar estoque"
           >
-            <FolderPlus /> Nova categoria
+            <RefreshCw size={17} className={refreshing ? "spinner" : ""} />{" "}
+            Atualizar
           </button>
           <button
             className="primary-admin"
             onClick={() => setItemDialog("new")}
           >
-            <Plus /> Novo item
+            <Plus size={18} /> Novo item
           </button>
         </div>
       </div>
       {error && (
-        <div className="admin-inline-error">
+        <div className="admin-inline-error" role="alert">
           <AlertCircle />
           {error}
-          <button onClick={() => setError("")}>
+          <button aria-label="Fechar aviso" onClick={() => setError("")}>
             <X />
           </button>
         </div>
       )}
-      <section className="inventory-command-bar">
-        <div className="inventory-health-score">
-          <i style={{ "--health": `${healthScore * 3.6}deg` } as React.CSSProperties}><span>{healthScore}%</span></i>
-          <span><small>SAÚDE DO ESTOQUE</small><strong>{healthScore >= 80 ? "Operação saudável" : healthScore >= 50 ? "Atenção necessária" : "Reposição urgente"}</strong><em>{normalItems.length} de {allItems.length} itens em nível normal</em></span>
-        </div>
-        <div className="inventory-command-stat"><Link2 /><span><small>INTEGRADOS AO CARDÁPIO</small><strong>{linkedItems.length} produtos</strong><em>Baixa automática por pedido</em></span></div>
-        <div className="inventory-command-stat"><BarChart3 /><span><small>LIMITES CONFIGURADOS</small><strong>{configuredItems.length} de {allItems.length}</strong><em>{allItems.length - configuredItems.length} aguardam limite mínimo</em></span></div>
-        <button title="Atualizar dados" onClick={() => void load()}><RefreshCw /> Atualizar</button>
-      </section>
-      <div className="inventory-summary">
-        <button type="button" onClick={() => setSummaryDialog("all")}>
-          <Package />
-          <div>
-            <span>Itens cadastrados</span>
-            <strong>{data?.summary.items ?? 0}</strong>
-          </div>
-        </button>
-        <button type="button" className={(data?.items ?? []).some((item) => Number(item.currentStock) <= Number(item.minimumStock)) ? "has-alert" : ""} onClick={() => setSummaryDialog("restock")}>
-          <AlertTriangle />
-          <div>
-            <span>Precisam de reposição</span>
-            <strong>
-              {
-                (data?.items ?? []).filter((item) => statusOf(item) !== "ok")
-                  .length
-              }{" "}
-              itens
-            </strong>
-          </div>
-        </button>
-        <button type="button" className={(data?.items ?? []).some((item) => Number(item.currentStock) <= 0) ? "has-alert" : ""} onClick={() => setSummaryDialog("out")}>
-          <AlertCircle />
-          <div>
-            <span>Sem estoque</span>
-            <strong>
-              {
-                (data?.items ?? []).filter((item) => statusOf(item) === "out")
-                  .length
-              }{" "}
-              itens
-            </strong>
-          </div>
-        </button>
-        <article>
-          <Wallet />
-          <div>
-            <span>Valor estimado</span>
-            <strong>{currency(data?.summary.totalValue ?? 0)}</strong>
-          </div>
-        </article>
-      </div>
-      <section className="inventory-master-filter">
-        <div><span>CONTROLE OPERACIONAL</span><h2>Localize e analise seus itens</h2></div>
-        <label><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome ou categoria" /></label>
-        <label><SlidersHorizontal /><select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">Todas as situações</option><option value="ok">Estoque normal</option><option value="low">Estoque baixo</option><option value="critical">Crítico</option><option value="out">Sem estoque</option></select></label>
-      </section>
-      <section className="inventory-categories">
-        <header>
-          <div>
-            <span>CATEGORIAS</span>
-            <h2>Organização do estoque</h2>
-          </div>
-          {selectedCategory && (
-            <button onClick={() => setSelectedCategory("")}>
-              Ver categorias
-            </button>
-          )}
-        </header>
-        <div>
-          {(data?.categories ?? []).map((category) => {
-            const categoryItems = (data?.items ?? []).filter(
-              (item) => item.category === category.name,
-            );
-            const alerts = categoryItems.filter(
-              (item) => statusOf(item) !== "ok",
-            ).length;
-            const categoryValue = categoryItems.reduce((sum, item) => sum + Number(item.currentStock) * Number(item.unitCost), 0);
-            const categoryHealth = categoryItems.length ? Math.round((categoryItems.length - alerts) / categoryItems.length * 100) : 100;
-            return (
-              <button
-                className={selectedCategory === category.name ? "active" : ""}
-                key={category.id}
-                onClick={() => setSelectedCategory(category.name)}
-              >
-                <i>
-                  <Boxes />
-                </i>
-                <span>
-                  <strong>{category.name}</strong>
-                  <small>
-                    {categoryItems.length}{" "}
-                    {categoryItems.length === 1 ? "item" : "itens"}
-                  </small>
-                  <em>{currency(categoryValue)}</em>
-                </span>
-                {alerts > 0 && (
-                  <b>
-                    {alerts} alerta{alerts > 1 ? "s" : ""}
-                  </b>
-                )}
-                <span className="category-health"><i><b style={{ width: `${categoryHealth}%` }} /></i><small>{categoryHealth}% normal</small></span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-      {selectedCategory && (
-        <article className="panel inventory-category-items">
-          <header>
-            <div>
-              <h2>{selectedCategory}</h2>
-              <p>Posição atual, criticidade e última alteração dos itens</p>
-            </div>
-            <div className="inventory-category-kpis"><span><b>{items.length}</b> exibidos</span><span className="warning"><b>{items.filter(item => statusOf(item) !== "ok").length}</b> alertas</span><span><b>{currency(items.reduce((sum,item) => sum + Number(item.currentStock) * Number(item.unitCost),0))}</b> em estoque</span></div>
-          </header>
-          <div className="category-item-head">
-            <span>Item</span>
-            <span>Saldo</span>
-            <span>Mínimo</span>
-            <span>Situação</span>
-            <span>Última edição</span>
-            <span>Ações</span>
-          </div>
-          {items.map((item) => (
-            <div className={`category-item-row ${Number(item.currentStock) <= Number(item.minimumStock) ? "stock-alert-row" : ""}`} key={item.id}>
-              <span>
-                <strong>{item.name}</strong>
-                <small>
-                  {currency(Number(item.unitCost))} / {unitOf(item.unit).short}
-                </small>
-                {item.productId && <em className="catalog-linked"><Link2 /> Cardápio</em>}
-              </span>
-              <b>{formattedStock(item.currentStock, item.unit)}</b>
-              <span>{formattedStock(item.minimumStock, item.unit)}</span>
-              <span><i className={`stock-pill stock-${statusOf(item)}`}>{statusOf(item) === "out" ? "Sem estoque" : statusOf(item) === "critical" ? "Crítico" : statusOf(item) === "low" ? "Estoque baixo" : "Normal"}</i></span>
-              <time>{new Date(item.updatedAt).toLocaleString("pt-BR")}</time>
-              <span className="inventory-actions">
-                <button
-                  title="Editar / repor mercadoria"
-                  onClick={() => setMovementItem(item)}
-                >
-                  <Edit3 />
-                </button>
-                <button
-                  title="Editar cadastro"
-                  onClick={() => setItemDialog(item)}
-                >
-                  <SlidersHorizontal />
-                </button>
-                <button
-                  title="Histórico"
-                  onClick={() => void openHistory(item)}
-                >
-                  <History />
-                </button>
-                <button
-                  className="delete"
-                  title="Excluir item"
-                  aria-label={`Excluir ${item.name}`}
-                  disabled={removingIds.includes(item.id)}
-                  onClick={async () => {
-                    if (!window.confirm(`Excluir ${item.name} do estoque?`))
-                      return;
-                    setError("");
-                    setRemovingIds(current => [...current, item.id]);
-                    try {
-                      await inventoryApi.removeItem(item.id);
-                      await load();
-                    } catch (reason) {
-                      setError(
-                        reason instanceof Error
-                          ? reason.message
-                          : "Falha ao excluir item.",
-                      );
-                    } finally {
-                      setRemovingIds(current => current.filter(id => id !== item.id));
-                    }
-                  }}
-                >
-                  {removingIds.includes(item.id) ? <LoaderCircle className="spinner" /> : <Trash2 />}
-                </button>
-              </span>
-            </div>
-          ))}
-          {!items.length && (
-            <div className="inventory-empty">
+      <nav className="stock-navigation" aria-label="Seções do estoque">
+        {stockSections.map((tab) => (
+          <button
+            key={tab.id}
+            aria-current={section === tab.id ? "page" : undefined}
+            onClick={() => navigateSection(tab.id)}
+          >
+            <tab.icon size={18} />
+            {tab.label}
+            {tab.id === "restock" && alerts.length > 0 && (
+              <b>{alerts.length}</b>
+            )}
+          </button>
+        ))}
+      </nav>
+      {section === "overview" && (
+        <>
+          <div className="stock-metrics">
+            <button onClick={() => navigateSection("items")}>
               <Package />
-              <h3>Nenhum item nesta categoria</h3>
-              <p>Cadastre um item e vincule-o a {selectedCategory}.</p>
-            </div>
-          )}
-        </article>
-      )}
-      <article className="panel inventory-panel">
-        <header>
-          <div>
-            <h2>Posição atual</h2>
-            <p>Limites e necessidades de compra por unidade de medida</p>
+              <span>
+                Itens em estoque<strong>{allItems.length}</strong>
+                <small>Ver todos os cadastros</small>
+              </span>
+            </button>
+            <button
+              className="stock-metric-alert"
+              onClick={() => navigateSection("restock")}
+            >
+              <AlertTriangle />
+              <span>
+                Precisam de reposição<strong>{alerts.length}</strong>
+                <small>Conferir lista de compras</small>
+              </span>
+            </button>
+            <button onClick={() => navigateSection("restock", "", "out")}>
+              <AlertCircle />
+              <span>
+                Sem estoque
+                <strong>
+                  {allItems.filter((item) => statusOf(item) === "out").length}
+                </strong>
+                <small>Prioridade para a operação</small>
+              </span>
+            </button>
+            <article>
+              <Wallet />
+              <span>
+                Valor em estoque
+                <strong>{currency(data?.summary.totalValue ?? 0)}</strong>
+                <small>Saldo × custo de cada item</small>
+              </span>
+            </article>
           </div>
-          <div className="inventory-tools">
-            <label>
-              <Search />
+          <div className="stock-overview-grid">
+            <section className="panel stock-overview-panel">
+              <header>
+                <div>
+                  <h2>O que precisa de atenção</h2>
+                  <p>Comece pelos itens que podem faltar na operação.</p>
+                </div>
+                <button onClick={() => navigateSection("restock")}>
+                  Ver reposição
+                </button>
+              </header>
+              <div className="stock-attention-list">
+                {priorityItems.slice(0, 5).map((item) => (
+                  <button key={item.id} onClick={() => setMovementItem(item)}>
+                    <span>
+                      <strong>{item.name}</strong>
+                      <small>
+                        {item.category} · {stockStatusLabel(item)}
+                      </small>
+                    </span>
+                    <b>
+                      {formattedStock(item.currentStock, item.unit)}
+                      <small>
+                        {shortageOf(item) > 0
+                          ? `Repor ${formattedStock(shortageOf(item), item.unit)}`
+                          : "Defina um mínimo"}
+                      </small>
+                    </b>
+                    <Plus size={18} />
+                  </button>
+                ))}
+                {!priorityItems.length && (
+                  <div className="stock-empty">
+                    <CheckCircle2 />
+                    <h3>Estoque em dia</h3>
+                    <p>Nenhum item está abaixo do nível configurado.</p>
+                  </div>
+                )}
+              </div>
+            </section>
+            <section className="panel stock-overview-panel">
+              <header>
+                <div>
+                  <h2>Últimas movimentações</h2>
+                  <p>Entradas, saídas e ajustes mais recentes.</p>
+                </div>
+                <button onClick={() => navigateSection("movements")}>
+                  Ver histórico
+                </button>
+              </header>
+              <div className="stock-recent-list">
+                {recentMovements.slice(0, 5).map((movement) => (
+                  <article key={movement.id}>
+                    <i>
+                      {movement.type === "IN" ? (
+                        <ArrowDownToLine />
+                      ) : movement.type === "OUT" ? (
+                        <ArrowUpFromLine />
+                      ) : (
+                        <SlidersHorizontal />
+                      )}
+                    </i>
+                    <span>
+                      <strong>
+                        {movement.item?.name ?? "Item do estoque"}
+                      </strong>
+                      <small>{movement.reason}</small>
+                    </span>
+                    <b>
+                      {movement.type === "OUT"
+                        ? "−"
+                        : movement.type === "IN"
+                          ? "+"
+                          : "="}{" "}
+                      {quantity(movement.quantity)}{" "}
+                      {movement.item ? unitOf(movement.item.unit).short : ""}
+                      <small>
+                        {new Date(movement.createdAt).toLocaleDateString(
+                          "pt-BR",
+                        )}
+                      </small>
+                    </b>
+                  </article>
+                ))}
+                {!recentMovements.length && (
+                  <div className="stock-empty">
+                    <History />
+                    <h3>Nenhuma movimentação</h3>
+                    <p>As entradas e saídas aparecerão aqui.</p>
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+          <div className="stock-setup-note">
+            <Link2 size={18} />
+            <p>
+              <b>
+                {allItems.filter((item) => item.productId).length} itens
+                vinculados ao cardápio
+              </b>{" "}
+              têm baixa automática por pedido.{" "}
+              {allItems.filter((item) => Number(item.minimumStock) <= 0).length}{" "}
+              itens ainda precisam de um estoque mínimo para orientar a
+              reposição.
+            </p>
+            <button onClick={() => navigateSection("items")}>
+              Conferir itens
+            </button>
+          </div>
+        </>
+      )}
+      {(section === "items" || section === "restock") && (
+        <section className="panel stock-items-panel">
+          <header className="stock-section-heading">
+            <div>
+              <h2>
+                {section === "restock"
+                  ? "Lista de reposição"
+                  : "Itens do estoque"}
+              </h2>
+              <p>
+                {section === "restock"
+                  ? "Ordenados por urgência. A sugestão completa o estoque mínimo cadastrado."
+                  : "Consulte saldos, registre entradas e mantenha os cadastros organizados."}
+              </p>
+            </div>
+            <span>
+              {items.length} {items.length === 1 ? "item" : "itens"}
+            </span>
+          </header>
+          <div className="stock-filters">
+            <label className="stock-search">
+              <Search size={17} />
               <input
+                aria-label="Buscar item do estoque"
+                placeholder="Buscar item ou categoria"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Buscar item"
               />
             </label>
-            <label className="inventory-filter">
-              <SlidersHorizontal />
+            <label>
+              <span>Categoria</span>
               <select
+                aria-label="Categoria do estoque"
+                value={selectedCategory}
+                onChange={(event) => setSelectedCategory(event.target.value)}
+              >
+                <option value="">Todas as categorias</option>
+                {categoryNames.map((name) => (
+                  <option key={name}>{name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Situação</span>
+              <select
+                aria-label="Situação do estoque"
                 value={filter}
                 onChange={(event) => setFilter(event.target.value)}
               >
-                <option value="all">Todos</option>
-                <option value="ok">Normal</option>
+                <option value="all">Todas as situações</option>
+                {section !== "restock" && <option value="ok">Normal</option>}
                 <option value="low">Estoque baixo</option>
                 <option value="critical">Crítico</option>
                 <option value="out">Sem estoque</option>
               </select>
             </label>
           </div>
-        </header>
-        <div className="inventory-real-table">
-          <div className="inventory-real-head">
-            <span>Item</span>
-            <span>Categoria</span>
-            <span>Saldo</span>
-            <span>Mínimo</span>
-            <span>Nível / reposição</span>
-            <span>Situação</span>
-            <span>Ações</span>
-          </div>
-          {items.map((item) => {
-            const status = statusOf(item);
-            const shortage = shortageOf(item);
-            const minimum = Number(item.minimumStock);
-            return (
-              <div key={item.id}>
-                <span>
-                  <strong>{item.name}</strong>
-                  <small>
-                    {currency(Number(item.unitCost))} /{" "}
-                    {unitOf(item.unit).short}
-                  </small>
-                </span>
-                <span>{item.category}</span>
-                <span>
-                  <strong>
-                    {formattedStock(item.currentStock, item.unit)}
-                  </strong>
-                </span>
-                <span>{formattedStock(item.minimumStock, item.unit)}</span>
-                <span className="stock-level">
-                  <i>
-                    <b
-                      className={`stock-level-${status}`}
-                      style={{ width: `${levelOf(item)}%` }}
-                    />
-                  </i>
-                  <small>
-                    {shortage > 0
-                      ? `Faltam ${formattedStock(shortage, item.unit)}`
-                      : minimum > 0
-                        ? `${formattedStock(Number(item.currentStock) - minimum, item.unit)} acima do mínimo`
-                        : "Sem limite definido"}
-                  </small>
-                </span>
-                <span>
-                  <i className={`stock-pill stock-${status}`}>
-                    {status === "out"
-                      ? "Sem estoque"
-                      : status === "critical"
-                        ? "Crítico"
-                        : status === "low"
-                          ? "Estoque baixo"
-                          : "Normal"}
-                  </i>
-                </span>
-                <span className="inventory-actions">
-                  <button
-                    title="Movimentar"
-                    onClick={() => setMovementItem(item)}
-                  >
-                    <ArrowDownToLine />
-                  </button>
-                  <button
-                    title="Histórico"
-                    onClick={() => void openHistory(item)}
-                  >
-                    <History />
-                  </button>
-                  <button title="Editar" onClick={() => setItemDialog(item)}>
-                    <Edit3 />
-                  </button>
-                </span>
+          <div
+            className={`stock-selection-bar ${selectedIds.length ? "has-selection" : ""}`}
+          >
+            <label>
+              <input
+                type="checkbox"
+                aria-label="Selecionar todos os itens filtrados"
+                checked={allSelected}
+                disabled={!items.length || saving}
+                ref={(element) => {
+                  if (element)
+                    element.indeterminate =
+                      selectedIds.length > 0 && !allSelected;
+                }}
+                onChange={(event) =>
+                  setSelectedIds(
+                    event.target.checked ? items.map((item) => item.id) : [],
+                  )
+                }
+              />
+              <span>
+                {selectedIds.length
+                  ? `${selectedIds.length} selecionado(s)`
+                  : "Selecionar todos os resultados"}
+              </span>
+            </label>
+            {selectedIds.length > 0 ? (
+              <div>
+                <button disabled={saving} onClick={() => setSelectedIds([])}>
+                  Limpar seleção
+                </button>
+                <button
+                  className="stock-delete-action"
+                  disabled={saving}
+                  onClick={() => {
+                    setError("");
+                    setDeleteIds(selectedIds);
+                  }}
+                >
+                  <Trash2 size={16} /> Excluir selecionados
+                </button>
               </div>
-            );
-          })}
-        </div>
-        {!items.length && (
-          <div className="inventory-empty">
-            <Package />
-            <h3>Nenhum item encontrado</h3>
-            <p>Cadastre o primeiro insumo para começar o controle.</p>
+            ) : (
+              <small>A seleção inclui todas as páginas do filtro atual.</small>
+            )}
           </div>
-        )}
-      </article>
-      <section className="inventory-intelligence-grid">
-        <article className="panel inventory-priority-panel"><header><div><span>PLANO DE AÇÃO</span><h2>Reposição prioritária</h2><p>Itens ordenados pelo maior risco operacional</p></div><AlertTriangle /></header><div>{priorityItems.length ? priorityItems.map(item => <button key={item.id} onClick={() => setMovementItem(item)}><i className={`priority-${statusOf(item)}`}><Package /></i><span><strong>{item.name}</strong><small>{item.category} · mínimo {formattedStock(item.minimumStock,item.unit)}</small></span><b>{formattedStock(item.currentStock,item.unit)}<small>{shortageOf(item) > 0 ? `faltam ${formattedStock(shortageOf(item),item.unit)}` : "defina o limite"}</small></b><Plus /></button>) : <div className="inventory-success-state"><CheckCircle2 /><strong>Estoque saudável</strong><span>Nenhum item exige reposição agora.</span></div>}</div></article>
-        <article className="panel inventory-activity-panel"><header><div><span>RASTREABILIDADE</span><h2>Movimentações recentes</h2><p>Últimas entradas, saídas e ajustes realizados</p></div><History /></header><div>{recentMovements.slice(0,6).map(movement => <article key={movement.id}><i className={movement.type.toLowerCase()}>{movement.type === "IN" ? <ArrowDownToLine /> : movement.type === "OUT" ? <ArrowUpFromLine /> : <SlidersHorizontal />}</i><span><strong>{movement.item?.name ?? "Item do estoque"}</strong><small>{movement.reason} · {new Date(movement.createdAt).toLocaleString("pt-BR")}</small></span><b className={movement.type === "OUT" ? "negative" : movement.type === "IN" ? "positive" : ""}>{movement.type === "OUT" ? "−" : movement.type === "IN" ? "+" : "="} {quantity(movement.quantity)} {movement.item ? unitOf(movement.item.unit).short : ""}</b></article>)}{!recentMovements.length && <div className="inventory-success-state"><History /><strong>Sem movimentações</strong><span>As operações aparecerão aqui.</span></div>}</div></article>
-      </section>
-      {summaryDialog && <StockSummaryDialog mode={summaryDialog} items={(data?.items ?? []).filter((item) => summaryDialog === "all" ? true : summaryDialog === "out" ? Number(item.currentStock) <= 0 : Number(item.currentStock) <= Number(item.minimumStock))} onClose={() => setSummaryDialog(null)} onEdit={(item) => { setSummaryDialog(null); setMovementItem(item); }} />}
+          <div className="stock-table-scroll">
+            <table className="stock-table">
+              <thead>
+                <tr>
+                  <th>
+                    <span className="sr-only">Seleção</span>
+                  </th>
+                  <th>Item</th>
+                  <th>Saldo / mínimo</th>
+                  <th>
+                    {section === "restock"
+                      ? "Reposição sugerida"
+                      : "Custo unitário"}
+                  </th>
+                  <th>Situação</th>
+                  <th>
+                    <span className="sr-only">Ações</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleItems.map((item) => (
+                  <tr
+                    key={item.id}
+                    className={selectedIds.includes(item.id) ? "selected" : ""}
+                  >
+                    <td>
+                      <input
+                        type="checkbox"
+                        aria-label={`Selecionar ${item.name}`}
+                        checked={selectedIds.includes(item.id)}
+                        disabled={saving}
+                        onChange={(event) =>
+                          setSelectedIds((ids) =>
+                            event.target.checked
+                              ? [...ids, item.id]
+                              : ids.filter((id) => id !== item.id),
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <strong>{item.name}</strong>
+                      <small>
+                        {item.category}
+                        {item.productId ? " · Vinculado ao cardápio" : ""}
+                      </small>
+                    </td>
+                    <td>
+                      <strong>
+                        {formattedStock(item.currentStock, item.unit)}
+                      </strong>
+                      <small>
+                        Mínimo: {formattedStock(item.minimumStock, item.unit)}
+                      </small>
+                    </td>
+                    <td>
+                      {section === "restock" ? (
+                        <>
+                          <strong>
+                            {shortageOf(item) > 0
+                              ? formattedStock(shortageOf(item), item.unit)
+                              : "Conferir mínimo"}
+                          </strong>
+                          <small>
+                            {shortageOf(item) > 0
+                              ? `${currency(shortageOf(item) * Number(item.unitCost))} estimados`
+                              : "Ajuste o limite do item"}
+                          </small>
+                        </>
+                      ) : (
+                        <>
+                          {currency(Number(item.unitCost))}
+                          <small>por {unitOf(item.unit).short}</small>
+                        </>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`stock-pill stock-${statusOf(item)}`}>
+                        {stockStatusLabel(item)}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="stock-row-actions">
+                        <button
+                          title="Registrar entrada, saída ou ajuste"
+                          aria-label={`Movimentar ${item.name}`}
+                          onClick={() => setMovementItem(item)}
+                        >
+                          <ArrowDownToLine size={17} />
+                        </button>
+                        <button
+                          title="Editar cadastro"
+                          aria-label={`Editar ${item.name}`}
+                          onClick={() => setItemDialog(item)}
+                        >
+                          <Edit3 size={17} />
+                        </button>
+                        <button
+                          title="Ver histórico"
+                          aria-label={`Histórico de ${item.name}`}
+                          onClick={() => void openHistory(item)}
+                        >
+                          <History size={17} />
+                        </button>
+                        <button
+                          className="stock-delete-action"
+                          title="Excluir item"
+                          aria-label={`Excluir ${item.name}`}
+                          disabled={saving}
+                          onClick={() => {
+                            setError("");
+                            setDeleteIds([item.id]);
+                          }}
+                        >
+                          <Trash2 size={17} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {!items.length && (
+            <div className="stock-empty">
+              <Package />
+              <h3>
+                {section === "restock"
+                  ? "Nenhum item para repor neste filtro"
+                  : "Nenhum item encontrado"}
+              </h3>
+              <p>
+                {query || selectedCategory || filter !== "all"
+                  ? "Altere os filtros para consultar outros itens."
+                  : "Cadastre um item para começar o controle."}
+              </p>
+            </div>
+          )}
+          {items.length > 0 && (
+            <footer className="stock-pagination">
+              <small>
+                {(currentPage - 1) * 25 + 1}–
+                {Math.min(currentPage * 25, items.length)} de {items.length}{" "}
+                itens
+              </small>
+              <div>
+                <button
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage(currentPage - 1)}
+                >
+                  Anterior
+                </button>
+                <span>
+                  {currentPage} / {pageCount}
+                </span>
+                <button
+                  disabled={currentPage >= pageCount}
+                  onClick={() => setPage(currentPage + 1)}
+                >
+                  Próxima
+                </button>
+              </div>
+            </footer>
+          )}
+        </section>
+      )}
+      {section === "categories" && (
+        <section className="panel stock-categories-panel">
+          <header className="stock-section-heading">
+            <div>
+              <h2>Categorias do estoque</h2>
+              <p>Agrupe insumos e produtos para facilitar a conferência.</p>
+            </div>
+            <button
+              className="secondary-admin"
+              onClick={() => {
+                setCategoryName("");
+                setCategoryDialog(true);
+              }}
+            >
+              <FolderPlus size={17} /> Nova categoria
+            </button>
+          </header>
+          <div className="stock-category-grid">
+            {categoryNames.map((name) => {
+              const categoryItems = allItems.filter(
+                  (item) => item.category === name,
+                ),
+                count = categoryItems.filter(
+                  (item) => statusOf(item) !== "ok",
+                ).length;
+              return (
+                <div className="stock-category-card" key={name}>
+                  <button
+                    className="stock-category-open"
+                    onClick={() => navigateSection("items", name)}
+                  >
+                    <Boxes size={22} />
+                    <strong>{name}</strong>
+                    <small>
+                      {categoryItems.length} itens ·{" "}
+                      {currency(
+                        categoryItems.reduce(
+                          (sum, item) =>
+                            sum +
+                            Number(item.currentStock) * Number(item.unitCost),
+                          0,
+                        ),
+                      )}
+                    </small>
+                    <span>
+                      {count
+                        ? `${count} precisam de reposição`
+                        : "Sem alertas de estoque"}
+                    </span>
+                  </button>
+                  <button
+                    className="stock-category-delete"
+                    type="button"
+                    aria-label={`Excluir categoria ${name}`}
+                    title="Excluir categoria"
+                    onClick={() => {
+                      setError("");
+                      setDeleteCategory(name);
+                    }}
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          {!categoryNames.length && (
+            <div className="stock-empty">
+              <Boxes />
+              <h3>Organize por categoria</h3>
+              <p>Crie a primeira categoria para cadastrar os insumos.</p>
+            </div>
+          )}
+        </section>
+      )}
+      {section === "movements" && (
+        <section className="panel stock-movements-panel">
+          <header className="stock-section-heading">
+            <div>
+              <h2>Movimentações do estoque</h2>
+              <p>
+                Últimos 200 registros. Para o histórico de um item, use o ícone
+                de histórico em Itens.
+              </p>
+            </div>
+          </header>
+          <div className="stock-filters">
+            <label className="stock-search">
+              <Search size={17} />
+              <input
+                aria-label="Buscar movimentação"
+                placeholder="Buscar item, motivo ou responsável"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Tipo</span>
+              <select
+                aria-label="Tipo de movimentação"
+                value={movementType}
+                onChange={(event) => setMovementType(event.target.value)}
+              >
+                <option value="all">Todos os tipos</option>
+                <option value="IN">Entradas</option>
+                <option value="OUT">Saídas</option>
+                <option value="ADJUST">Ajustes</option>
+              </select>
+            </label>
+          </div>
+          <div className="stock-table-scroll">
+            <table className="stock-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Item / motivo</th>
+                  <th>Tipo</th>
+                  <th>Quantidade</th>
+                  <th>Saldo anterior → atual</th>
+                  <th>Responsável</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMovements.map((movement) => (
+                  <tr key={movement.id}>
+                    <td>
+                      {new Date(movement.createdAt).toLocaleString("pt-BR")}
+                    </td>
+                    <td>
+                      <strong>
+                        {movement.item?.name ?? "Item do estoque"}
+                      </strong>
+                      <small>{movement.reason}</small>
+                      {movement.notes && <small>{movement.notes}</small>}
+                    </td>
+                    <td>
+                      <span
+                        className={`stock-movement-type ${movement.type.toLowerCase()}`}
+                      >
+                        {
+                          { IN: "Entrada", OUT: "Saída", ADJUST: "Ajuste" }[
+                            movement.type
+                          ]
+                        }
+                      </span>
+                    </td>
+                    <td>
+                      {quantity(movement.quantity)} {movement.item?.unit}
+                    </td>
+                    <td>
+                      {quantity(movement.previousStock)} →{" "}
+                      {quantity(movement.resultingStock)}
+                    </td>
+                    <td>{movement.createdBy ?? "Sistema"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {!filteredMovements.length && (
+            <div className="stock-empty">
+              <History />
+              <h3>Nenhuma movimentação encontrada</h3>
+              <p>As entradas, saídas e ajustes aparecerão aqui.</p>
+            </div>
+          )}
+        </section>
+      )}
+      {categoryDialog && (
+        <Dialog
+          title="Nova categoria"
+          onClose={() => !saving && setCategoryDialog(false)}
+        >
+          <form
+            className="inventory-form"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setSaving(true);
+              setError("");
+              try {
+                await inventoryApi.createCategory(categoryName.trim());
+                setCategoryDialog(false);
+                await load();
+              } catch (reason) {
+                setError((reason as Error).message);
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            <label>
+              Nome da categoria
+              <input
+                autoFocus
+                required
+                minLength={2}
+                maxLength={120}
+                value={categoryName}
+                onChange={(event) => setCategoryName(event.target.value)}
+                placeholder="Ex.: Queijos e frios"
+              />
+            </label>
+            <footer>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setCategoryDialog(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="primary-admin"
+                disabled={saving || categoryName.trim().length < 2}
+              >
+                Criar categoria
+              </button>
+            </footer>
+          </form>
+        </Dialog>
+      )}
+      {deleteCategory !== null && (
+        <Dialog
+          title={`Excluir categoria ${deleteCategory}`}
+          onClose={() => !saving && setDeleteCategory(null)}
+        >
+          <div className="stock-delete-confirm">
+            {error && <p role="alert">{error}</p>}
+            <p>
+              Excluir a categoria <strong>{deleteCategory}</strong> e todos os
+              itens de estoque que pertencem a ela?
+            </p>
+            <ul>
+              {allItems
+                .filter((item) => item.category === deleteCategory)
+                .map((item) => (
+                  <li key={item.id}>{item.name}</li>
+                ))}
+            </ul>
+            <p>
+              Os itens desta categoria, inclusive os ocultos, serão removidos
+              juntos. O histórico de movimentações e os produtos do cardápio
+              serão preservados.
+            </p>
+            <footer>
+              <button
+                className="secondary-admin"
+                disabled={saving}
+                onClick={() => setDeleteCategory(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="stock-confirm-delete"
+                disabled={saving}
+                onClick={async () => {
+                  setSaving(true);
+                  setError("");
+                  try {
+                    await inventoryApi.removeCategory(deleteCategory);
+                    if (selectedCategory === deleteCategory)
+                      setSelectedCategory("");
+                    setDeleteCategory(null);
+                    await load();
+                  } catch (reason) {
+                    setError((reason as Error).message);
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                {saving ? (
+                  <LoaderCircle size={17} className="spinner" />
+                ) : (
+                  <Trash2 size={17} />
+                )}{" "}
+                Excluir categoria e itens
+              </button>
+            </footer>
+          </div>
+        </Dialog>
+      )}
+      {deleteIds.length > 0 && (
+        <Dialog
+          title={
+            deleteIds.length === 1
+              ? "Excluir item do estoque"
+              : `Excluir ${deleteIds.length} itens do estoque`
+          }
+          onClose={() => !saving && setDeleteIds([])}
+        >
+          <div className="stock-delete-confirm">
+            {error && <p role="alert">{error}</p>}
+            <p>Confira os itens que serão removidos do estoque:</p>
+            <ul>
+              {deleteIds.map((id) => (
+                <li key={id}>
+                  {allItems.find((item) => item.id === id)?.name ??
+                    "Item removido"}
+                </li>
+              ))}
+            </ul>
+            <p>
+              O histórico de movimentações e os produtos do cardápio serão
+              preservados. Itens vinculados deixarão de controlar o saldo das
+              próximas vendas.
+            </p>
+            {deleteIds.length > 1000 && (
+              <p role="alert">Selecione até 1.000 itens por exclusão.</p>
+            )}
+            <footer>
+              <button
+                className="secondary-admin"
+                disabled={saving}
+                onClick={() => setDeleteIds([])}
+              >
+                Cancelar
+              </button>
+              <button
+                className="stock-confirm-delete"
+                disabled={saving || deleteIds.length > 1000}
+                onClick={async () => {
+                  setSaving(true);
+                  setError("");
+                  try {
+                    await inventoryApi.removeItems(deleteIds);
+                    setDeleteIds([]);
+                    setSelectedIds([]);
+                    await load();
+                  } catch (reason) {
+                    setError((reason as Error).message);
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                {saving ? (
+                  <LoaderCircle size={17} className="spinner" />
+                ) : (
+                  <Trash2 size={17} />
+                )}{" "}
+                {saving
+                  ? "Excluindo..."
+                  : `Excluir ${deleteIds.length === 1 ? "item" : `${deleteIds.length} itens`}`}
+              </button>
+            </footer>
+          </div>
+        </Dialog>
+      )}
       {itemDialog && (
         <ItemDialog
           item={itemDialog === "new" ? null : itemDialog}
-          categories={(data?.categories ?? []).map((category) => category.name)}
+          categories={categoryNames}
           defaultCategory={selectedCategory}
           saving={saving}
           onClose={() => setItemDialog(null)}
           onSave={async (input) => {
             setSaving(true);
+            setError("");
             try {
               if (itemDialog === "new") await inventoryApi.createItem(input);
               else await inventoryApi.updateItem(itemDialog.id, input);
               setItemDialog(null);
               await load();
             } catch (reason) {
-              setError(
-                reason instanceof Error
-                  ? reason.message
-                  : "Falha ao salvar item.",
-              );
+              setError((reason as Error).message);
             } finally {
               setSaving(false);
             }
@@ -541,16 +1077,13 @@ export function InventoryModule() {
           onClose={() => setMovementItem(null)}
           onSave={async (input) => {
             setSaving(true);
+            setError("");
             try {
               await inventoryApi.move(movementItem.id, input);
               setMovementItem(null);
               await load();
             } catch (reason) {
-              setError(
-                reason instanceof Error
-                  ? reason.message
-                  : "Falha ao movimentar estoque.",
-              );
+              setError((reason as Error).message);
             } finally {
               setSaving(false);
             }
@@ -566,11 +1099,6 @@ export function InventoryModule() {
       )}
     </div>
   );
-}
-
-function StockSummaryDialog({ mode, items, onClose, onEdit }: { mode: "all" | "restock" | "out"; items: InventoryItem[]; onClose: () => void; onEdit: (item: InventoryItem) => void }) {
-  const titles = { all: "Itens cadastrados", restock: "Itens para reposição", out: "Itens sem estoque" };
-  return <div className="inventory-dialog-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="inventory-dialog stock-summary-dialog"><header><div><span>ESTOQUE</span><h2>{titles[mode]}</h2><p>{items.length} {items.length === 1 ? "item encontrado" : "itens encontrados"}</p></div><button onClick={onClose}><X /></button></header><div className="stock-summary-scroll">{items.length ? items.map((item) => { const alert = Number(item.currentStock) <= Number(item.minimumStock); return <article className={alert ? "stock-alert-row" : ""} key={item.id}><i><Package /></i><span><strong>{item.name}</strong><small>{item.category} · mínimo {formattedStock(item.minimumStock,item.unit)}</small><em>Atualizado em {new Date(item.updatedAt).toLocaleString("pt-BR")}</em></span><b>{formattedStock(item.currentStock,item.unit)}</b><button onClick={() => onEdit(item)}><Edit3 /> Repor</button></article>; }) : <div className="inventory-empty"><Package /><h3>Nenhum item nesta situação</h3></div>}</div></section></div>;
 }
 
 function ItemDialog({
@@ -633,8 +1161,14 @@ function ItemDialog({
               setForm({ ...form, category: event.target.value })
             }
           >
-            <option value="" disabled>Selecione uma categoria</option>
-            {categories.map((category) => <option value={category} key={category}>{category}</option>)}
+            <option value="" disabled>
+              Selecione uma categoria
+            </option>
+            {categories.map((category) => (
+              <option value={category} key={category}>
+                {category}
+              </option>
+            ))}
           </select>
         </label>
         <label>
@@ -683,7 +1217,19 @@ function ItemDialog({
         </label>
         <label>
           Custo por {unit.label}
-          <div className="currency-input"><span>R$</span><input min="0" step="0.01" type="number" value={form.unitCost || ""} placeholder="0,00" onChange={(event) => setForm({ ...form, unitCost: Number(event.target.value) })} /></div>
+          <div className="currency-input">
+            <span>R$</span>
+            <input
+              min="0"
+              step="0.01"
+              type="number"
+              value={form.unitCost || ""}
+              placeholder="0,00"
+              onChange={(event) =>
+                setForm({ ...form, unitCost: Number(event.target.value) })
+              }
+            />
+          </div>
         </label>
         <footer>
           <button type="button" onClick={onClose}>
@@ -830,15 +1376,53 @@ function Dialog({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const dialogRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    dialogRef.current
+      ?.querySelector<HTMLElement>("button, input, select, textarea")
+      ?.focus();
+    return () => {
+      if (previous?.isConnected) previous.focus();
+    };
+  }, []);
   return (
     <div
       className="inventory-dialog-overlay"
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
-      <section className="inventory-dialog">
+      <section
+        className="inventory-dialog"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            onClose();
+          }
+          if (event.key === "Tab") {
+            const controls = Array.from(
+              dialogRef.current?.querySelectorAll<HTMLElement>(
+                "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)",
+              ) ?? [],
+            );
+            const first = controls[0],
+              last = controls[controls.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+              event.preventDefault();
+              last?.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+              event.preventDefault();
+              first?.focus();
+            }
+          }
+        }}
+      >
         <header>
           <h2>{title}</h2>
-          <button onClick={onClose}>
+          <button type="button" aria-label="Fechar janela" onClick={onClose}>
             <X />
           </button>
         </header>

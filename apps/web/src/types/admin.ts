@@ -10,8 +10,11 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
 };
 
 export type OrderOption = { id: string; optionName: string; optionGroupName: string; priceDelta: string; quantity: number };
-export type OrderItem = { id: string; productName: string; quantity: number; unitPrice: string; lineTotal: string; notes?: string; selectedOptions: OrderOption[] };
+export type OrderItem = { productId?: string | null; optionsTotal?: string; id: string; productName: string; quantity: number; unitPrice: string; lineTotal: string; notes?: string; selectedOptions: OrderOption[] };
 export type Order = {
+  completedAt?: string | null;
+  canDelete?: boolean;
+  courierId?: string | null; courierName?: string | null; serviceFee?: string; serviceFeeAccepted?: boolean; customerEmail?: string; customerDocument?: string;
   tableNumber?: number | null;
   diningSessionId?: string | null;
   paymentStatus?: "NOT_REQUIRED" | "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
