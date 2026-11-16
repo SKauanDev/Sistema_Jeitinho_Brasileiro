@@ -657,6 +657,20 @@
 .manual-catalog .topbar,.manual-catalog .hero,.manual-catalog .site-footer,.manual-catalog .floating-cart~footer,.table-catalog .topbar,.table-catalog .hero,.table-catalog .site-footer{display:none}
 .manual-catalog .overlay{position:fixed;inset:0;z-index:40}.manual-catalog .drawer-overlay{z-index:45}
 .pizza-border-picker{border:1px solid #e4ddd2;border-radius:12px;margin:16px 0;padding:14px}.pizza-border-picker legend{font-weight:700;font-size:14px}.pizza-border-picker select{width:100%;padding:12px;border-radius:8px;background:#fff;border:1px solid #ddd4c8;color:#131313;font:inherit}
+.pizza-border-picker { min-width: 0; }
+.pizza-border-hint { margin: 0; color: #6c6258; font-size: 13px; line-height: 1.4; }
+.pizza-border-mobile { display: none; }
+@media (max-width: 760px) {
+  .pizza-border-picker .pizza-border-desktop { display: none; }
+  .pizza-border-mobile { display: grid; gap: 12px; }
+  .pizza-border-mobile button { min-height: 44px; padding: 10px 12px; border: 1px solid #ddd4c9; border-radius: 9px; color: #131313; background: #fff; text-align: left; font: inherit; cursor: pointer; }
+  .pizza-border-mobile button[aria-pressed="true"] { border-color: #6f0801; background: #faf2eb; box-shadow: 0 0 0 1px #6f0801; }
+  .pizza-border-type > span { display: block; margin-bottom: 6px; font-size: 12px; color: #6c6258; }
+  .pizza-border-type > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .pizza-border-type button { display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
+  .pizza-border-type strong { font-size: 13px; }
+  .pizza-border-type small { font-size: 12px; color: #6f0801; }
+}
 .table-session-header{display:flex;gap:16px;align-items:center;padding:20px max(20px,calc((100vw - 1200px)/2));background:#131313;color:#fff}.table-session-header img{width:64px;height:64px;object-fit:contain;background:#fff;border-radius:50%}.table-session-header h1{font-size:24px;margin:0 0 6px}.table-session-header p{margin:0;font-size:14px;color:#f5e7ce;line-height:1.5}
 .table-welcome{max-width:480px;margin:56px auto;padding:24px;text-align:center;line-height:1.65}.table-welcome h2{font-size:26px}.table-welcome button{width:100%;margin-top:14px}.table-notice{padding:14px 20px;margin:12px 20px;border:1px solid #ca923955;border-radius:10px;background:#fff8ea;color:#6F0801}
 .table-count-form{padding:20px;display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:24px}.table-count-form label{max-width:180px}.table-count-form small{flex-basis:100%;color:#625b53}.tables-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:16px}

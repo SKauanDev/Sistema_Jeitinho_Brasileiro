@@ -1,3 +1,4 @@
+import { PizzaBorderPicker } from "./components/PizzaBorderPicker";
 import { promotionPrice } from "./utils/pizza";
 import { useTableNavigation } from "./features/cart/useTableNavigation";
 import { emptyPizzaRules, loadPizzaRules, PIZZA_STYLES, type PizzaStyle } from "./services/pizza-rules";
@@ -475,7 +476,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
                 </div>
                 <p className="pizza-selection-summary" aria-live="polite">{activePizza.mode === "whole" ? flavorName(activePizza.leftId) : `${flavorName(activePizza.leftId)} + ${flavorName(activePizza.rightId)}`}<small>Toque na pizza para escolher cada metade.</small></p>
                 <div className="mobile-flavor-selectors">{(activePizza.mode === "half" ? ["left", "right"] as const : ["left"] as const).map(half => <button type="button" key={half} disabled={!!selected.sizes?.length && !selectedSize} onClick={() => { setActivePizzaHalf(half); showFlavorChoices(); }}><span>{activePizza.mode === "whole" ? "Sabor da pizza" : half === "left" ? "1ª metade" : "2ª metade"}</span><strong>{flavorName(half === "left" ? activePizza.leftId : activePizza.rightId)}</strong><ChevronRight size={17} /></button>)}</div>
-                {!!availableBorders.length && <fieldset className="pizza-border-picker"><legend>Borda recheada · opcional</legend><select aria-label="Borda recheada" value={activePizza.borderId ?? ""} onChange={event => updatePizzaSelection({ borderId: event.target.value || undefined })}><option value="">Sem borda recheada</option>{(["SAVORY", "SWEET"] as const).map(type => <optgroup key={type} label={type === "SAVORY" ? "Salgadas" : "Doces"}>{availableBorders.filter(border => border.type === type).map(border => <option key={border.id} value={border.id}>{border.name} · + {money(borderPrice(border.id))}</option>)}</optgroup>)}</select></fieldset>}
+                {rules.borders.some(border => border.active) && <PizzaBorderPicker borders={availableBorders.map(border => ({ ...border, price: borderPrice(border.id) }))} selectedId={activePizza.borderId} needsStyle={styledPizza && !selectedStyle} onChange={borderId => updatePizzaSelection({ borderId })} />}
                 {!Number.isFinite(selectedUnitPrice) && (!styledPizza || (selectedStyle && selectedSize)) && <p role="status">Esta combinação não está disponível neste estilo e tamanho.</p>}
                 <p className="pizza-flavor-notice" role="status" aria-live="polite">{flavorNotice}</p>
                 {styledPizza && !selectedStyle ? <p className="pizza-size-hint">Escolha o estilo da massa e depois o tamanho.</p> : !!selected.sizes?.length && !selectedSize && <p className="pizza-size-hint">Escolha um tamanho para ver os sabores disponíveis.</p>}
