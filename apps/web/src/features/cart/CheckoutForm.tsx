@@ -141,7 +141,12 @@ export function CheckoutForm({
   if (manual) availablePayments.push(["RECEIVED_ONLINE", "Pagamento online já recebido"]);
 
   useEffect(() => {
-    void fetch(`${API_URL}/delivery/config`)
+    let active = true, fetching = false, loaded = false;
+    const controller = new AbortController();
+    const refresh = () => {
+      if (fetching || document.visibilityState === "hidden") return;
+      fetching = true;
+      void fetch(`${API_URL}/delivery/config`, { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {
         const result = (await response.json()) as DeliveryConfig & {
           message?: string;
@@ -150,6 +155,8 @@ export function CheckoutForm({
           throw new Error(
             result.message ?? "Falha ao carregar as regras da loja.",
           );
+        if (!active) return;
+        loaded = true;
         setConfig(result);
         if (!result.allowDelivery && result.allowPickup) setType("PICKUP");
         const first: PaymentMethod | undefined = result.payments.cash
@@ -159,16 +166,27 @@ export function CheckoutForm({
             : result.payments.pix
               ? "PIX"
               : manual ? "RECEIVED_ONLINE" : undefined;
-        if (first) setPaymentMethod(first);
+        setPaymentMethod(current => {
+          const valid = current === "CASH" ? result.payments.cash : current === "PIX" ? result.payments.pix : ["CREDIT_CARD", "DEBIT_CARD"].includes(current) ? result.payments.cardOnDelivery : manual;
+          return valid ? current : first ?? current;
+        });
       })
-      .catch((reason) =>
-        setError(
-          reason instanceof Error
-            ? reason.message
-            : "Falha ao carregar as regras da loja.",
-        ),
-      );
-  }, []);
+      .catch(reason => {
+        if (active && !loaded) setError(reason instanceof Error ? reason.message : "Falha ao carregar as regras da loja.");
+      }).finally(() => { fetching = false; });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 15_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("urfood:store-settings-changed", refresh);
+    return () => {
+      active = false; controller.abort(); window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("urfood:store-settings-changed", refresh);
+    };
+  }, [manual]);
 
   useEffect(() => {
     const controller = new AbortController();

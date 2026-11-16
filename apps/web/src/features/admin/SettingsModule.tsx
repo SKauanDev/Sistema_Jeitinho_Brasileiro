@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { settingsApi } from "../../services/settings-api";
+import { adminApi } from "../../services/admin-api";
 import { API_URL } from "../../services/admin-api";
 import { formatCurrencyField, parseCurrencyField } from "../../utils/currency-field";
 import type {
@@ -79,7 +80,7 @@ export function SettingsModule() {
         ...result.store,
         phone: formatContact(result.store.phone ?? ""),
       });
-      setHours(result.hours);
+      setHours(result.hours.map(hour => ({ ...hour, opensAt: hour.opensAt || "18:00", closesAt: hour.closesAt || "23:30" })));
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -155,8 +156,10 @@ export function SettingsModule() {
     setSaving(true);
     try {
       setHours(await settingsApi.saveHours(hours));
-      setSuccess("Horários atualizados.");
-      setTimeout(() => setSuccess(""), 2500);
+      window.dispatchEvent(new Event("urfood:store-settings-changed"));
+      const status = await adminApi.store().catch(() => null);
+      setSuccess(status?.configuredOpen === false ? "Horários atualizados. A loja está pausada manualmente; reative-a pelo botão no cabeçalho." : "Horários atualizados.");
+      setTimeout(() => setSuccess(""), status?.configuredOpen === false ? 8000 : 2500);
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "Falha ao salvar horários.",
@@ -334,7 +337,7 @@ export function SettingsModule() {
                     setHours(
                       hours.map((item) =>
                         item.dayOfWeek === hour.dayOfWeek
-                          ? { ...item, isClosed: !checked }
+                          ? { ...item, isClosed: !checked, opensAt: item.opensAt || "18:00", closesAt: item.closesAt || "23:30" }
                           : item,
                       ),
                     )

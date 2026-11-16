@@ -9,7 +9,7 @@ import { sequelize } from "../../database/sequelize.js";
 import { env } from "../../config/env.js";
 import { inventoryRouter } from "./inventory.routes.js";
 
-test("MySQL/HTTP: exclui item manual e vinculado sem ressuscitar no sync; preserva movimentações e reativação automática legítima", { skip: process.env.RUN_DB_INVENTORY_REMOVAL_TESTS !== "true", timeout: 60000 }, async () => {
+test("MySQL/HTTP: exclusao preserva historico e alteracoes no catalogo nao sincronizam estoque", { skip: process.env.RUN_DB_INVENTORY_REMOVAL_TESTS !== "true", timeout: 60000 }, async () => {
   const suffix = randomUUID(), categoryId = randomUUID(), firstId = randomUUID(), secondId = randomUUID(), categoryName = `Bebidas QA exclusão ${suffix}`;
   const ids: string[] = [];
   const app = express(); app.use(express.json()); app.use("/inventory", inventoryRouter);
@@ -23,8 +23,9 @@ test("MySQL/HTTP: exclui item manual e vinculado sem ressuscitar no sync; preser
     await Category.create({ id: categoryId, name: categoryName, slug: `qa-${suffix}`, active: true });
     await Product.bulkCreate([{ id: firstId, categoryId, name: `Bebida QA ${suffix}`, price: 10, active: true }, { id: secondId, categoryId, name: `Bebida QA automática ${suffix}`, price: 10, active: true }]);
     await list();
-    const linked = await InventoryItem.findOne({ where: { productId: firstId } });
-    const automatic = await InventoryItem.findOne({ where: { productId: secondId } }); assert.ok(linked && automatic);
+    assert.equal(await InventoryItem.count({ where: { productId: [firstId, secondId] } }), 0);
+    const linked = await InventoryItem.create({ productId: firstId, name: `Bebida QA ${suffix}`, category: categoryName, unit: "un", currentStock: 0, minimumStock: 0, unitCost: 0, active: true });
+    const automatic = await InventoryItem.create({ productId: secondId, name: `Bebida QA legada ${suffix}`, category: categoryName, unit: "un", currentStock: 0, minimumStock: 0, unitCost: 0, active: true });
     ids.push(String(linked.getDataValue("id")), String(automatic.getDataValue("id")));
     const manualResponse = await request("/items", "POST", { name: `Insumo QA ${suffix}`, category: "Insumos", unit: "un", currentStock: 5, minimumStock: 1, unitCost: 2 });
     assert.equal(manualResponse.status, 201); const manual = await manualResponse.json(); ids.push(manual.id);
@@ -42,7 +43,7 @@ test("MySQL/HTTP: exclui item manual e vinculado sem ressuscitar no sync; preser
     }
     await Product.update({ name: `Bebida QA renomeada ${suffix}` }, { where: { id: firstId } }); await list(); await linked.reload(); assert.equal(linked.getDataValue("active"), false); assert.ok(linked.getDataValue("removedAt"));
     const history = await request(`/movements?itemId=${linked.getDataValue("id")}`); assert.equal(history.status, 200); assert.equal((await history.json()).length, 1);
-    await Product.update({ active: false }, { where: { id: secondId } }); await list(); await automatic.reload(); assert.equal(automatic.getDataValue("active"), false);
+    await Product.update({ active: false }, { where: { id: secondId } }); await list(); await automatic.reload(); assert.equal(automatic.getDataValue("active"), true);
     await Product.update({ active: true }, { where: { id: secondId } }); await list(); await automatic.reload(); assert.equal(automatic.getDataValue("active"), true); assert.equal(automatic.getDataValue("removedAt"), null);
   } finally {
     for (const item of await InventoryItem.findAll({ where: { productId: [firstId, secondId] } })) if (!ids.includes(String(item.getDataValue("id")))) ids.push(String(item.getDataValue("id")));

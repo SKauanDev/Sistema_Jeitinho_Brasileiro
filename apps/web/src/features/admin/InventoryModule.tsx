@@ -12,7 +12,6 @@ import {
   Edit3,
   FolderPlus,
   History,
-  Link2,
   LoaderCircle,
   Package,
   Plus,
@@ -412,13 +411,10 @@ export function InventoryModule() {
             </section>
           </div>
           <div className="stock-setup-note">
-            <Link2 size={18} />
+            <Boxes size={18} />
             <p>
-              <b>
-                {allItems.filter((item) => item.productId).length} itens
-                vinculados ao cardápio
-              </b>{" "}
-              têm baixa automática por pedido.{" "}
+              <b>Estoque independente do cardápio.</b>{" "}
+              Entradas e saídas são registradas manualmente.{" "}
               {allItems.filter((item) => Number(item.minimumStock) <= 0).length}{" "}
               itens ainda precisam de um estoque mínimo para orientar a
               reposição.
@@ -575,10 +571,7 @@ export function InventoryModule() {
                     </td>
                     <td>
                       <strong>{item.name}</strong>
-                      <small>
-                        {item.category}
-                        {item.productId ? " · Vinculado ao cardápio" : ""}
-                      </small>
+                      <small>{item.category}</small>
                     </td>
                     <td>
                       <strong>
@@ -1002,8 +995,7 @@ export function InventoryModule() {
             </ul>
             <p>
               O histórico de movimentações e os produtos do cardápio serão
-              preservados. Itens vinculados deixarão de controlar o saldo das
-              próximas vendas.
+              preservados. A exclusão não altera o cardápio nem os pedidos.
             </p>
             {deleteIds.length > 1000 && (
               <p role="alert">Selecione até 1.000 itens por exclusão.</p>

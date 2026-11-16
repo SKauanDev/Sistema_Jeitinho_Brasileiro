@@ -1,3 +1,4 @@
+import { effectiveStoreStatus } from "../settings/store-operation.service.js";
 import { isDeveloper } from "../../shared/developer.middleware.js";
 import { isCounterPayment } from "../orders/payment-policy.js";
 import { Op, QueryTypes } from "sequelize";
@@ -8,7 +9,6 @@ import {
   OrderItem,
   OrderItemOption,
   OrderStatusHistory,
-  StoreHour,
   StoreSetting,
   DiningSession,
   DiningTable,
@@ -65,53 +65,6 @@ const trend = (current: number, previous: number) =>
       ? 100
       : 0
     : Number((((current - previous) / previous) * 100).toFixed(1));
-const minutesOf = (time: unknown) => {
-  const parts = String(time ?? "")
-    .split(":")
-    .map(Number);
-  const hour = parts[0] ?? Number.NaN;
-  const minute = parts[1] ?? Number.NaN;
-  return Number.isFinite(hour) && Number.isFinite(minute)
-    ? hour * 60 + minute
-    : -1;
-};
-async function effectiveStoreStatus(settings: any) {
-  if (!settings.getDataValue("isOpen")) return false;
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Sao_Paulo",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(
-    parts.map((part) => [part.type, part.value]),
-  );
-  const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(
-    values.weekday ?? "",
-  );
-  const minute = Number(values.hour ?? 0) * 60 + Number(values.minute ?? 0);
-  const hours = await StoreHour.findAll({
-    where: { storeSettingId: settings.getDataValue("id") },
-  });
-  const today = hours.find(
-    (item) => Number(item.getDataValue("dayOfWeek")) === day,
-  );
-  const previous = hours.find(
-    (item) => Number(item.getDataValue("dayOfWeek")) === (day + 6) % 7,
-  );
-  const inside = (item: any, previousDay = false) => {
-    if (!item || item.getDataValue("isClosed")) return false;
-    const opens = minutesOf(item.getDataValue("opensAt"));
-    const closes = minutesOf(item.getDataValue("closesAt"));
-    if (opens < 0 || closes < 0) return false;
-    if (closes > opens)
-      return !previousDay && minute >= opens && minute < closes;
-    return previousDay ? minute < closes : minute >= opens;
-  };
-  return inside(today) || inside(previous, true);
-}
-
 adminRouter.get("/dashboard", async (request, response) => {
   const { start, end, previousStart, previousEnd } = periodRange(
     String(request.query.period ?? "today"),

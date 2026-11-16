@@ -1,46 +1,10 @@
 import type { Transaction } from "sequelize";
-import { Category, InventoryCategory, InventoryItem, InventoryMovement, Order, OrderItem, Product } from "../../database/models.js";
+import { InventoryItem, InventoryMovement, Order, OrderItem } from "../../database/models.js";
 import { sequelize } from "../../database/sequelize.js";
 import { QueryTypes } from "sequelize";
 import { assertAvailableStock, groupedQuantities } from "./stock-validation.js";
 
 const number = (value: unknown) => Number(value ?? 0);
-const normalized = (value: unknown) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-const excludedCategory = (name: unknown) => ["hamburg", "porcao", "pizza", "combo"].some(word => normalized(name).includes(word));
-
-export async function syncCatalogInventory(transaction?: Transaction) {
-  const products = await Product.findAll({ where: { active: true, trashedAt: null }, include: [{ model: Category, as: "category", required: true }], transaction });
-  const eligible = products.filter(product => !excludedCategory((product.get("category") as any)?.name));
-  const existing = await InventoryItem.findAll({ transaction });
-  const stockCategories = await InventoryCategory.findAll({ transaction });
-  const retired = new Set(stockCategories.filter(category => !category.getDataValue("active")).map(category => String(category.getDataValue("name"))));
-  const used = new Set(existing.filter(item => item.getDataValue("productId")).map(item => String(item.getDataValue("id"))));
-  for (const product of eligible) {
-    const productId = String(product.getDataValue("id"));
-    const linked = existing.find(item => String(item.getDataValue("productId") ?? "") === productId);
-    const originalCategory = String((product.get("category") as any)?.name ?? "Cardápio");
-    if (retired.has(originalCategory)) continue;
-    const categoryName = originalCategory;
-    if (linked) {
-      if (linked.getDataValue("removedAt")) continue;
-      if (linked.getDataValue("name") !== product.getDataValue("name") || linked.getDataValue("category") !== categoryName || !linked.getDataValue("active")) {
-        await InventoryItem.update({ name: product.getDataValue("name"), category: categoryName, active: true }, { where: { id: linked.getDataValue("id"), removedAt: null }, transaction });
-      }
-      continue;
-    }
-    await InventoryCategory.findOrCreate({ where: { name: categoryName }, defaults: { name: categoryName, active: true }, transaction });
-    const match = existing.find(item => !item.getDataValue("removedAt") && !used.has(String(item.getDataValue("id"))) && !item.getDataValue("productId") && normalized(item.getDataValue("name")) === normalized(product.getDataValue("name")));
-    if (match) {
-      const [updated] = await InventoryItem.update({ productId, category: categoryName, active: true }, { where: { id: match.getDataValue("id"), removedAt: null }, transaction });
-      if (updated) used.add(String(match.getDataValue("id")));
-    }
-    else { const created = await InventoryItem.create({ productId, name: product.getDataValue("name"), category: categoryName, unit: "un", currentStock: 0, minimumStock: 0, unitCost: 0, active: true }, { transaction }); existing.push(created); used.add(String(created.getDataValue("id"))); }
-  }
-  const eligibleIds = new Set(eligible.map(product => String(product.getDataValue("id"))));
-  for (const item of existing.filter(item => item.getDataValue("active") && item.getDataValue("productId") && !eligibleIds.has(String(item.getDataValue("productId"))))) await item.update({ active: false }, { transaction });
-  return eligible.length;
-}
-
 // Executar na transação READ COMMITTED de criação. Os bloqueios ordenados
 // serializam carrinhos concorrentes; pedidos ainda não baixados reservam saldo.
 export async function validateOrderInventory(items: Array<{ productId?: unknown; quantity?: unknown }>, transaction: Transaction) {

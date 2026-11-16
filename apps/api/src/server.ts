@@ -1,3 +1,4 @@
+import { detachCatalogInventory } from "./modules/inventory/detach-catalog-inventory.js";
 import { developerCleanupRouter } from "./modules/admin/developer-cleanup.routes.js";
 import http from "node:http";
 import cors from "cors";
@@ -33,7 +34,6 @@ import { orderEditRouter } from "./modules/admin/order-edit.routes.js";
 import { settingsRouter } from "./modules/settings/settings.routes.js";
 import { purgeExpiredCatalogTrash } from "./modules/catalog/catalog-cleanup.service.js";
 import { userRouter } from "./modules/users/user.routes.js";
-import { syncCatalogInventory } from "./modules/inventory/catalog-inventory.service.js";
 import { deliveryRouter } from "./modules/delivery/delivery.routes.js";
 import { configureSocketSecurity } from "./realtime/socket-security.js";
 import { apiErrorHandler, createRateLimit, securityHeaders } from "./shared/http-security.js";
@@ -94,7 +94,7 @@ app.use(apiErrorHandler);
 
 async function start(): Promise<void> {
   await sequelize.authenticate();
-  await syncCatalogInventory();
+  await detachCatalogInventory();
   httpServer.listen(env.port, env.host, () => {
     console.log(`API UrFood disponível em http://${env.host}:${env.port}`);
   });

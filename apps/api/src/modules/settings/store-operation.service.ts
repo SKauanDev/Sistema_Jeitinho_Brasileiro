@@ -1,20 +1,10 @@
+import { isWithinOpeningHours, type OpeningHour } from "./store-hours.js";
 import type { Transaction } from "sequelize";
 import {
   DeliveryZone,
   StoreHour,
   StoreSetting,
 } from "../../database/models.js";
-
-const minutesOf = (time: unknown) => {
-  const [rawHour, rawMinute] = String(time ?? "")
-    .split(":")
-    .map(Number);
-  const hour = rawHour ?? Number.NaN;
-  const minute = rawMinute ?? Number.NaN;
-  return Number.isFinite(hour) && Number.isFinite(minute)
-    ? hour * 60 + minute
-    : -1;
-};
 
 export const normalizeRegion = (value: unknown) =>
   String(value ?? "")
@@ -42,41 +32,13 @@ export async function effectiveStoreStatus(
   transaction?: Transaction,
 ) {
   if (!settings.getDataValue("isOpen")) return false;
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Sao_Paulo",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(
-    parts.map((part) => [part.type, part.value]),
-  );
-  const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(
-    values.weekday ?? "",
-  );
-  const minute = Number(values.hour ?? 0) * 60 + Number(values.minute ?? 0);
   const hours = await StoreHour.findAll({
     where: { storeSettingId: settings.getDataValue("id") },
     transaction,
   });
-  if (!hours.length) return true;
-  const today = hours.find(
-    (item) => Number(item.getDataValue("dayOfWeek")) === day,
+  return isWithinOpeningHours(
+    hours.map((hour) => hour.get({ plain: true }) as OpeningHour),
   );
-  const previous = hours.find(
-    (item) => Number(item.getDataValue("dayOfWeek")) === (day + 6) % 7,
-  );
-  const inside = (item: any, previousDay = false) => {
-    if (!item || item.getDataValue("isClosed")) return false;
-    const opens = minutesOf(item.getDataValue("opensAt"));
-    const closes = minutesOf(item.getDataValue("closesAt"));
-    if (opens < 0 || closes < 0) return false;
-    if (closes > opens)
-      return !previousDay && minute >= opens && minute < closes;
-    return previousDay ? minute < closes : minute >= opens;
-  };
-  return inside(today) || inside(previous, true);
 }
 
 export async function resolveDeliveryZone(

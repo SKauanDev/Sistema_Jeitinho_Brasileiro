@@ -7,14 +7,12 @@ import {
 } from "../../database/models.js";
 import { sequelize } from "../../database/sequelize.js";
 import { requireAdmin, requireAuth } from "../../shared/auth.middleware.js";
-import { syncCatalogInventory } from "./catalog-inventory.service.js";
 
 export const inventoryRouter = Router();
 inventoryRouter.use(requireAuth, requireAdmin);
 const numeric = (value: unknown) => Number(value ?? 0);
 
 inventoryRouter.get("/", async (_request, response) => {
-  await syncCatalogInventory();
   const [items, categories] = await Promise.all([
     InventoryItem.findAll({
       where: { active: true, removedAt: null },

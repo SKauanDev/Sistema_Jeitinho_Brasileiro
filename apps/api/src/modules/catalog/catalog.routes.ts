@@ -14,7 +14,6 @@ import {
 } from "../../database/models.js";
 import { sequelize } from "../../database/sequelize.js";
 import { requireAdmin, requireAuth } from "../../shared/auth.middleware.js";
-import { syncCatalogInventory } from "../inventory/catalog-inventory.service.js";
 import { createAsyncCache } from "../../shared/async-cache.js";
 import { applyCatalogPricing } from "./catalog-pricing.js";
 import { readPizzaRules } from "./pizza-rules.js";
@@ -186,7 +185,6 @@ adminCatalogRouter.post("/products/bulk-trash", async (request, response) => {
     { active: false, trashedAt: new Date() },
     { where: { id: { [Op.in]: ids }, trashedAt: null } },
   );
-  await syncCatalogInventory();
   response.json({ count });
 });
 
@@ -202,7 +200,6 @@ adminCatalogRouter.post("/products/bulk-restore", async (request, response) => {
     { active: true, trashedAt: null },
     { where: { id: { [Op.in]: ids }, trashedAt: { [Op.ne]: null } } },
   );
-  await syncCatalogInventory();
   response.json({ count });
 });
 
@@ -365,7 +362,6 @@ adminCatalogRouter.post("/products", async (request, response) => {
     active: request.body.active !== false,
     position: Number(request.body.position ?? 0),
   });
-  await syncCatalogInventory();
   response.status(201).json(product);
 });
 adminCatalogRouter.patch("/products/:id", async (request, response) => {
@@ -403,7 +399,6 @@ adminCatalogRouter.patch("/products/:id", async (request, response) => {
           : request.body[key];
   if (Array.isArray(changes.sizes) && changes.sizes.length) { changes.price = Math.min(...changes.sizes.map(entry => entry.price)); changes.promotionalPrice = null; }
   await product.update(changes);
-  await syncCatalogInventory();
   response.json(product);
 });
 adminCatalogRouter.delete("/products/:id", async (request, response) => {
@@ -413,7 +408,6 @@ adminCatalogRouter.delete("/products/:id", async (request, response) => {
     return;
   }
   await product.update({ active: false, trashedAt: new Date() });
-  await syncCatalogInventory();
   response.status(204).send();
 });
 

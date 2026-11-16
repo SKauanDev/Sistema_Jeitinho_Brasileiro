@@ -58,7 +58,8 @@ export function AdminPage() {
     };
     refreshStore();
     const timer = window.setInterval(refreshStore, 15_000);
-    return () => window.clearInterval(timer);
+    window.addEventListener("urfood:store-settings-changed", refreshStore);
+    return () => { window.clearInterval(timer); window.removeEventListener("urfood:store-settings-changed", refreshStore); };
   }, [kitchen]);
 
   function signOut() {
@@ -158,7 +159,7 @@ export function AdminPage() {
               onClick={toggleStore}
             >
               <i />
-              {store?.isOpen ? "Loja aberta" : "Loja fechada"}
+              {store?.isOpen ? "Loja aberta" : store?.configuredOpen === false ? "Loja pausada" : "Fora do horário"}
             </button>}
             {!kitchen && <a
               className="menu-preview-link"
