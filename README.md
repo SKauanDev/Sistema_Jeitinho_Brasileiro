@@ -305,6 +305,10 @@ O catálogo público e o admin devolvem os preços herdados da tabela, mesmo que
 
 Na **Central de pedidos → Adicionar pedido manual**, monte o pedido no mesmo cardápio e preencha os dados do cliente. A opção **Pagamento online já recebido** registra o recebimento confirmado pela equipe; não gera cobrança no Mercado Pago. Somente administradores e operadores podem criar pedidos manuais. O perfil Cozinha continua restrito ao acompanhamento e avanço de pedidos.
 
+Ao preencher o telefone no pedido manual, o sistema consulta o cadastro e completa nome e endereço, incluindo número, CEP e complemento. Os campos continuam editáveis. Alterações feitas durante a consulta são preservadas; trocar o telefone limpa os dados automáticos do cliente anterior e descarta respostas atrasadas. Telefones sem cadastro permitem preenchimento manual. A consulta exige a sessão da equipe e não ocorre no checkout público.
+
+A escolha de sabores possui busca por nome na lista do computador e no popup mobile, sem diferenciar maiúsculas ou acentos. A busca mantém as restrições de tamanho, estilo e combinação de sabores.
+
 Em **Mesas e comandas**, o padrão é 40 mesas. Ajuste a quantidade para ocultar as excedentes, preservando os números, links e históricos. Mesas com contas abertas não podem ser ocultadas. Imprima os QR codes pelo módulo; cada link `/mesa/:chave` identifica uma única mesa e funciona sem conta de cliente. Imprima a partir do domínio público que os clientes utilizarão, nunca do endereço localhost.
 
 O cliente escaneia, abre a comanda e envia pedidos com observações diretamente à cozinha. O consumo não exige nome, telefone ou endereço e não recebe taxa de entrega ou taxa digital. Novos pedidos entram na central com os mesmos alertas de som. A equipe confere o consumo e registra a forma de recebimento ao fechar a conta; esse registro não dispara uma cobrança eletrônica. O sistema verifica se o consumo e a sessão ainda são os mesmos antes de fechar. A próxima abertura cria uma sessão nova. Pedidos de contas recebidas não podem ser cancelados pela central.

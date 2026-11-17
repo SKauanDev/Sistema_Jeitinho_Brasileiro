@@ -1,5 +1,5 @@
 import { customerCheckoutHeaders } from "./customer-checkout-session";
-import { readCheckoutDefaults, rememberCheckoutDefaults } from "./checkout-defaults";
+import { defaultsFromProfile, readCheckoutDefaults, rememberCheckoutDefaults } from "./checkout-defaults";
 import type { CustomerDetails } from "../../types/customer";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -84,6 +84,11 @@ export function CheckoutForm({
 }: Props) {
   const [initial] = useState(()=>readCheckoutDefaults(manual));
   const touched=useRef(new Set<string>());
+  const fieldEdits = useRef(new Map<string, number>());
+  const autofilled = useRef<Record<string, string>>({});
+  const cepRequest = useRef(0);
+  const [customerLookup, setCustomerLookup] = useState("");
+  const markTouched = (...keys: string[]) => keys.forEach(key => { touched.current.add(key); fieldEdits.current.set(key, (fieldEdits.current.get(key) ?? 0) + 1); });
   const [type, setType] = useState<"DELIVERY" | "PICKUP">(initial.fulfillmentType);
   const [customerName, setCustomerName] = useState(initial.name);
   const [loading, setLoading] = useState(false);
@@ -103,7 +108,49 @@ export function CheckoutForm({
   const [cepLoading, setCepLoading] = useState(false);
   const [cepMessage, setCepMessage] = useState("");
   const [address, setAddress] = useState(initial.address);
-  const changeAddress=(key:keyof typeof address,value:string)=>{touched.current.add(key);setAddress(current=>({...current,[key]:value}));};
+  const changeAddress=(key:keyof typeof address,value:string)=>{markTouched(key);setAddress(current=>({...current,[key]:value}));};
+  const changePhone = (value: string) => {
+    const next = formatPhone(value);
+    if (manual && next !== phone) {
+      cepRequest.current++;
+      setCepLoading(false); setCepMessage("");
+      const previous = autofilled.current;
+      setCustomerName(current => previous.name !== undefined && current === previous.name ? "" : current);
+      setCep(current => previous.postalCode !== undefined && current === formatCep(previous.postalCode) ? "" : current);
+      setAddress(current => Object.fromEntries(Object.entries(current).map(([key, entry]) => [key, previous[key] !== undefined && entry === previous[key] ? "" : entry])) as typeof current);
+      autofilled.current = {};
+      setCustomerLookup("");
+    }
+    markTouched("phone"); setPhone(next);
+  };
+  useEffect(() => {
+    if (!manual) return;
+    const digits = phone.replace(/\D/g, "");
+    if (![10, 11].includes(digits.length)) { setCustomerLookup(""); return; }
+    const controller = new AbortController();
+    const revisions = new Map(fieldEdits.current);
+    const unchanged = (key: string) => (fieldEdits.current.get(key) ?? 0) === (revisions.get(key) ?? 0);
+    const timer = window.setTimeout(() => {
+      setCustomerLookup("Buscando cliente...");
+      void fetch(`${API_URL}/admin/customers/${digits}`, { headers: { Authorization: `Bearer ${localStorage.getItem("urfood_token")}` }, signal: controller.signal, cache: "no-store" }).then(async response => {
+        if (controller.signal.aborted) return;
+        if (response.status === 404) { setCustomerLookup("Cliente não encontrado. Preencha os dados para este pedido."); return; }
+        if (!response.ok) throw new Error("Não foi possível consultar o cliente. Preencha os dados manualmente.");
+        const profile = await response.json() as CustomerDetails;
+        if (controller.signal.aborted) return;
+        const defaults = defaultsFromProfile(profile);
+        const filled: Record<string, string> = {};
+        if (unchanged("name")) { setCustomerName(defaults.name); filled.name = defaults.name; }
+        if (unchanged("postalCode")) { setCep(formatCep(defaults.address.postalCode)); filled.postalCode = defaults.address.postalCode; }
+        const addressValues = Object.fromEntries(Object.entries(defaults.address).filter(([key]) => unchanged(key)));
+        Object.assign(filled, addressValues);
+        setAddress(current => ({ ...current, ...addressValues }));
+        autofilled.current = filled;
+        setCustomerLookup("Cliente localizado. Confira os dados preenchidos.");
+      }).catch(reason => { if (!controller.signal.aborted) setCustomerLookup(reason instanceof Error ? reason.message : "Preencha os dados manualmente."); });
+    }, 350);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [manual, phone]);
   useEffect(()=>{
     const token=localStorage.getItem("urfood_customer_token");
     if(manual||!token)return;
@@ -231,8 +278,10 @@ export function CheckoutForm({
   }, [address.neighborhood, address.city, address.state, subtotal, type]);
 
   async function lookupCep(value: string) {
+    const requestId = ++cepRequest.current;
     const digits = value.replace(/\D/g, "");
     if (digits.length !== 8) {
+      setCepLoading(false);
       setCepMessage("");
       return;
     }
@@ -247,6 +296,7 @@ export function CheckoutForm({
         localidade?: string;
         uf?: string;
       };
+      if (requestId !== cepRequest.current) return;
       if (!response.ok || data.erro) throw new Error("CEP não encontrado.");
       setAddress(current=>({...current,
         street: data.logradouro ?? "",
@@ -257,13 +307,14 @@ export function CheckoutForm({
       }));
       setCepMessage("Endereço localizado automaticamente.");
     } catch (reason) {
+      if (requestId !== cepRequest.current) return;
       setCepMessage(
         reason instanceof Error
           ? reason.message
           : "Não foi possível consultar o CEP.",
       );
     } finally {
-      setCepLoading(false);
+      if (requestId === cepRequest.current) setCepLoading(false);
     }
   }
 
@@ -429,7 +480,7 @@ export function CheckoutForm({
             required
             autoComplete="name"
             value={customerName}
-            onChange={event=>{touched.current.add("name");setCustomerName(event.target.value);}}
+            onChange={event=>{markTouched("name");setCustomerName(event.target.value);}}
             placeholder="Quem receberá o pedido?"
           />
         </label>
@@ -441,11 +492,12 @@ export function CheckoutForm({
             autoComplete="tel"
             inputMode="tel"
             value={phone}
-            onChange={(event) => {touched.current.add("phone");setPhone(formatPhone(event.target.value));}}
+            onChange={event => changePhone(event.target.value)}
             minLength={14}
             maxLength={15}
             placeholder="(00) 00000-0000"
           />
+          {manual && customerLookup && <small className="manual-customer-lookup" role="status" aria-live="polite">{customerLookup}</small>}
         </label>
       </div>
       {type === "DELIVERY" && (
@@ -464,7 +516,7 @@ export function CheckoutForm({
                   inputMode="numeric"
                   value={cep}
                   onChange={(event) => {
-                    ["postalCode","street","neighborhood","city","state"].forEach(key=>touched.current.add(key));
+                    markTouched("postalCode", "street", "neighborhood", "city", "state");
                     const formatted = formatCep(event.target.value);
                     setCep(formatted);
                     void lookupCep(formatted);

@@ -1,3 +1,4 @@
+import { PizzaFlavorSearch, filterPizzaFlavors } from "./components/PizzaFlavorSearch";
 import { PizzaBorderPicker } from "./components/PizzaBorderPicker";
 import { promotionPrice } from "./utils/pizza";
 import { useTableNavigation } from "./features/cart/useTableNavigation";
@@ -63,6 +64,8 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
   const [selectedSize, setSelectedSize] = useState<PizzaSize | undefined>();
   const [selectedStyle, setSelectedStyle] = useState<PizzaStyle | undefined>();
   const [flavorNotice, setFlavorNotice] = useState("");
+  const [flavorSearch, setFlavorSearch] = useState("");
+  useEffect(() => { setFlavorSearch(""); }, [selectedProduct?.id, activePizzaSlot, activePizzaHalf, selectedSize, selectedStyle]);
   const [localFlavorPickerOpen, setLocalFlavorPickerOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -480,7 +483,7 @@ export default function App({ manual = false, onManualComplete, table, onTableOr
                 {!Number.isFinite(selectedUnitPrice) && (!styledPizza || (selectedStyle && selectedSize)) && <p role="status">Esta combinação não está disponível neste estilo e tamanho.</p>}
                 <p className="pizza-flavor-notice" role="status" aria-live="polite">{flavorNotice}</p>
                 {styledPizza && !selectedStyle ? <p className="pizza-size-hint">Escolha o estilo da massa e depois o tamanho.</p> : !!selected.sizes?.length && !selectedSize && <p className="pizza-size-hint">Escolha um tamanho para ver os sabores disponíveis.</p>}
-                <div className="pizza-flavors"><span>Selecione o sabor da {activePizza.mode === "whole" ? "pizza" : activePizzaHalf === "left" ? "1ª metade" : "2ª metade"}</span>{availableFlavors.map((flavor) => { const chosen = (activePizzaHalf === "right" && activePizza.mode === "half" ? activePizza.rightId : activePizza.leftId) === flavor.id; return <button key={flavor.id} className={chosen ? "chosen" : ""} aria-pressed={chosen} onClick={() => choosePizzaFlavor(flavor.id)}><FoodImage src={flavor.image} alt="" /><div><strong>{flavor.name}</strong><small>{flavor.description}</small>{styledPizza ? <small>{pizzaKind(flavor.category) === "PREMIUM" ? "Premium" : pizzaKind(flavor.category) === "SWEET" ? "Doce" : "Comum"}</small> : selected && isPizzaFlavor(selected) && <small className="flavor-price">{money(productPrice(flavor, selectedSize))}</small>}</div>{chosen && <Check />}</button>; })}</div>
+                <div className="pizza-flavors"><PizzaFlavorSearch value={flavorSearch} onChange={setFlavorSearch} /><span>Selecione o sabor da {activePizza.mode === "whole" ? "pizza" : activePizzaHalf === "left" ? "1ª metade" : "2ª metade"}</span>{filterPizzaFlavors(availableFlavors, flavorSearch).map((flavor) => { const chosen = (activePizzaHalf === "right" && activePizza.mode === "half" ? activePizza.rightId : activePizza.leftId) === flavor.id; return <button key={flavor.id} className={chosen ? "chosen" : ""} aria-pressed={chosen} onClick={() => choosePizzaFlavor(flavor.id)}><FoodImage src={flavor.image} alt="" /><div><strong>{flavor.name}</strong><small>{flavor.description}</small>{styledPizza ? <small>{pizzaKind(flavor.category) === "PREMIUM" ? "Premium" : pizzaKind(flavor.category) === "SWEET" ? "Doce" : "Comum"}</small> : selected && isPizzaFlavor(selected) && <small className="flavor-price">{money(productPrice(flavor, selectedSize))}</small>}</div>{chosen && <Check />}</button>; })}{!!availableFlavors.length && !filterPizzaFlavors(availableFlavors, flavorSearch).length && <p role="status">Nenhum sabor encontrado. Tente outro nome.</p>}</div>
               </section>}
               {!!selected.extras?.length && !selected.ingredients?.length && <div className="extras">
                 <div><h3>Deixe do seu jeito</h3><span>Escolha quantos quiser</span></div>

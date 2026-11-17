@@ -516,6 +516,13 @@
 .pizza-flavor-picker h3 { margin: 4px 0 0; font-size: 18px; }
 .pizza-flavor-picker header button { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border: 0; border-radius: 50%; background: #f5f2ee; }
 .pizza-flavor-picker .pizza-flavor-notice { padding: 12px 18px 0; margin: 0; }
+.pizza-flavor-search { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 10px 0; padding: 0 10px; border: 1px solid #ded6cd; border-radius: 9px; background: #fff; color: #766a5f; }
+.pizza-flavor-search:focus-within { border-color: #6f0801; box-shadow: 0 0 0 2px #6f08011a; }
+.pizza-flavor-search input { width: 100%; min-width: 0; min-height: 42px; border: 0; padding: 10px 0; outline: none; box-shadow: none; background: transparent; color: #131313; font: inherit; font-size: 16px; }
+.pizza-flavor-search input:focus, .pizza-flavor-search input:focus-visible { outline: none; box-shadow: none; }
+.pizza-flavor-search button { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: #6f0801; cursor: pointer; }
+.pizza-flavor-picker .pizza-flavor-search { flex-shrink: 0; margin: 12px 18px 4px; }
+.manual-customer-lookup { display: block; margin-top: 6px; color: #695d51; font-size: 12px; line-height: 1.4; }
 .flavor-picker-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 10px; }
 .flavor-picker-list > button { display: flex; align-items: center; width: 100%; gap: 12px; padding: 10px; text-align: left; border: 1px solid transparent; border-radius: 10px; background: #fff; color: #131313; }
 .flavor-picker-list > button + button { margin-top: 4px; }
